@@ -1,0 +1,32 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="110" fill="#2c2c2e"/>
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ade80;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#06b6d4;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Dollar Sign Area (Top Left) -->
+  <g transform="translate(90, 160)">
+      <path d="M18 4V44M28 10H14C8.477 10 4 14.477 4 20v0c0 5.523 4.477 10 10 10h8c5.523 0 10 4.477 10 10v0c0 5.523-4.477 10-10 10H8" 
+      fill="none" stroke="url(#grad)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Bars -->
+  <rect x="100" y="340" width="35" height="60" rx="6" fill="url(#grad)" opacity="0.5"/>
+  <rect x="160" y="300" width="35" height="100" rx="6" fill="url(#grad)" opacity="0.6"/>
+  <rect x="220" y="320" width="35" height="80" rx="6" fill="url(#grad)" opacity="0.7"/>
+  <rect x="280" y="260" width="35" height="140" rx="6" fill="url(#grad)" opacity="0.8"/>
+  <rect x="340" y="200" width="35" height="200" rx="6" fill="url(#grad)" opacity="0.9"/>
+  <rect x="400" y="160" width="35" height="240" rx="6" fill="url(#grad)" opacity="1.0"/>
+
+  <!-- Line Graph -->
+  <polyline points="117,340 177,300 237,320 297,260 357,200 417,160" fill="none" stroke="url(#grad)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Arrow Head -->
+  <path d="M370 160 H 417 V 210" fill="none" stroke="url(#grad)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Bottom Line -->
+  <path d="M80 440 H 432" stroke="url(#grad)" stroke-width="12" stroke-linecap="round"/>
+</svg>

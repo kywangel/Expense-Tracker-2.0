@@ -33,7 +33,8 @@ export interface InvestmentEntry {
 }
 
 export interface AppSettings {
-  sheetDbUrl: string;
+  sheetDbUrl: string; // Source 1: Google Form Responses (Read-Only usually)
+  masterSheetUrl: string; // Source 2: App Database Master (Read/Write)
   monthlyBudget: number; // Kept for potential future use or legacy
   monthlyCategoryBudgets: Record<string, Record<string, number>>; // Keyed by 'YYYY-MM'
   // Dynamic category lists

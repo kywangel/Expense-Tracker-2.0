@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, AppSettings } from '../types';
 
@@ -13,12 +14,13 @@ type FilterType = 'all' | 'income' | 'expense' | 'investment';
 
 const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, settings, onRefresh }) => {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
-  const [itemToDelete, setItemToDelete] = useState<string | null>(null); // State for delete modal
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filter, setFilter] = useState<FilterType>('all');
   const [visibleMonths, setVisibleMonths] = useState<Record<string, boolean>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Sync Input (Form)
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await onRefresh();
@@ -55,9 +57,9 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
   }, [sortedMonths]);
   
   const handleExport = () => {
-    const headers = "Date,Amount,Category\n";
+    const headers = "Date,Amount,Category,Note,Type\n";
     const csvContent = filteredTransactions
-      .map(tx => `${tx.date},${tx.amount},"${tx.category.replace(/"/g, '""')}"`)
+      .map(tx => `${tx.date},${tx.amount},"${(tx.category || '').replace(/"/g, '""')}","${(tx.note || '').replace(/"/g, '""')}",${tx.type}`)
       .join("\n");
       
     const blob = new Blob([headers + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -81,14 +83,14 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
   };
 
   const handleDeleteClick = (txId: string) => {
-    setItemToDelete(txId); // Open confirmation modal
+    setItemToDelete(txId);
   };
 
   const confirmDelete = () => {
     if (itemToDelete) {
       onDelete(itemToDelete);
     }
-    setItemToDelete(null); // Close modal
+    setItemToDelete(null);
   };
 
   const handleSave = (updatedTx: Transaction) => {
@@ -122,25 +124,35 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
 
 
   return (
-    <div className="pb-24 space-y-4">
-        <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-2">
-            <div className="flex gap-2">
-                <button onClick={handleRefresh} disabled={isRefreshing} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-wait">
-                    <svg className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5M4 4l5 5M20 20l-5-5"></path></svg>
-                    {isRefreshing ? 'Refreshing...' : 'Refresh'}
+    <div className="pb-24 space-y-5">
+        {/* iOS Style Segmented Control */}
+        <div className="bg-gray-200 p-1 rounded-xl flex text-xs font-semibold mx-1">
+            {(['all', 'expense', 'income', 'investment'] as FilterType[]).map(f => (
+                <button 
+                    key={f} 
+                    onClick={() => setFilter(f)} 
+                    className={`flex-1 py-1.5 rounded-lg capitalize transition-all duration-200 leading-none ${filter === f ? 'bg-white text-gray-900 shadow-sm scale-[1.02]' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    {f}
                 </button>
-                <button onClick={handleExport} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg font-semibold text-sm hover:bg-green-600 transition-colors">
-                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                    Export
-                </button>
-            </div>
-            <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-1 bg-gray-100 p-1 rounded-lg">
-                {(['all', 'expense', 'income', 'investment'] as FilterType[]).map(f => (
-                    <button key={f} onClick={() => setFilter(f)} className={`px-2 py-1 text-xs font-bold rounded-md transition-colors capitalize ${filter === f ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:bg-gray-200'}`}>
-                        {f}
-                    </button>
-                ))}
-            </div>
+            ))}
+        </div>
+
+        {/* Action Grid (2 buttons now) */}
+        <div className="grid grid-cols-2 gap-3">
+             <button onClick={handleRefresh} disabled={isRefreshing} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center gap-2 active:bg-gray-50 active:scale-95 transition-all disabled:opacity-50 h-24">
+                 <div className={`w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center ${isRefreshing ? 'animate-spin' : ''}`}>
+                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5M4 4l5 5M20 20l-5-5"></path></svg>
+                 </div>
+                 <span className="text-[10px] font-semibold text-gray-600">{isRefreshing ? 'Syncing...' : 'Sync Forms'}</span>
+            </button>
+
+            <button onClick={handleExport} disabled={isRefreshing} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center gap-2 active:bg-gray-50 active:scale-95 transition-all disabled:opacity-50 h-24">
+                 <div className="w-8 h-8 rounded-full bg-green-50 text-green-600 flex items-center justify-center">
+                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                 </div>
+                 <span className="text-[10px] font-semibold text-gray-600">Export CSV</span>
+            </button>
         </div>
 
         {sortedMonths.map(monthKey => {

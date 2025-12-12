@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import Navigation from './components/Navigation';
 import Dashboard from './components/Dashboard';
@@ -20,6 +21,7 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('appSettings');
     const defaults: AppSettings = { 
         sheetDbUrl: DEFAULT_SHEET_ID, 
+        masterSheetUrl: "https://docs.google.com/spreadsheets/d/1vfnpOxHRtljZlbnHyGe86A_1Xmb-RyweRd1aT1Ojk3M/edit?usp=sharing",
         monthlyBudget: 3000,
         monthlyCategoryBudgets: {},
         incomeCategories: DEFAULT_INCOME_CATEGORIES,
@@ -33,6 +35,10 @@ const App: React.FC = () => {
             const currentMonthKey = format(new Date(), 'yyyy-MM');
             parsed.monthlyCategoryBudgets = { [currentMonthKey]: parsed.categoryBudgets };
             delete parsed.categoryBudgets;
+        }
+        // Ensure masterSheetUrl exists if migration from older version
+        if (!parsed.masterSheetUrl) {
+            parsed.masterSheetUrl = defaults.masterSheetUrl;
         }
         return { ...defaults, ...parsed };
     }
@@ -84,11 +90,14 @@ const App: React.FC = () => {
     setTimeout(() => setNotification(null), 3000);
   };
 
-  const handleRefreshFromSheet = async () => {
-      const urlToFetch = settings.sheetDbUrl || DEFAULT_SHEET_ID;
+  const handleSyncData = async (sourceUrl: string, sourceName: string) => {
+      if (!sourceUrl) {
+          showNotification(`No URL configured for ${sourceName}`);
+          return;
+      }
       try {
         const fetchedData = await fetchTransactions(
-            urlToFetch, 
+            sourceUrl, 
             settings.incomeCategories, 
             settings.investmentCategories
         );
@@ -97,17 +106,17 @@ const App: React.FC = () => {
             const existingIds = new Set(prevTxs.map(t => t.id));
             const newTxsFromSheet = fetchedData.filter(t => t && t.id && !existingIds.has(t.id));
             if (newTxsFromSheet.length > 0) {
-                showNotification(`${newTxsFromSheet.length} new transaction(s) synced.`);
+                showNotification(`Synced ${newTxsFromSheet.length} items from ${sourceName}.`);
                 return [...prevTxs, ...newTxsFromSheet];
             } else {
-                showNotification("No new transactions found.");
+                showNotification(`No new items in ${sourceName}.`);
             }
             return prevTxs;
         });
 
       } catch (error) {
-        console.error("Failed to refresh transactions from source:", error);
-        showNotification("Failed to sync from sheet.");
+        console.error(`Failed to sync from ${sourceName}:`, error);
+        showNotification(`Failed to sync from ${sourceName}.`);
       }
   };
 
@@ -115,6 +124,14 @@ const App: React.FC = () => {
   const handleSaveSettings = (newSettings: AppSettings) => {
     setSettings(newSettings);
     showNotification("Settings Saved!");
+  };
+  
+  const handleImportData = (data: any) => {
+      if (data.transactions) setTransactions(data.transactions);
+      if (data.settings) setSettings(data.settings);
+      if (data.aiFoundItems) setAiFoundItems(data.aiFoundItems);
+      if (data.aiMatchedItems) setAiMatchedItems(data.aiMatchedItems);
+      showNotification("Data restored from backup!");
   };
   
   const handleAddCategory = (type: 'income' | 'expense' | 'investment', category: string) => {
@@ -256,7 +273,7 @@ const App: React.FC = () => {
         {view === AppView.DASHBOARD && <Dashboard transactions={sortedTransactions} currentMonthBudgets={currentMonthBudgets} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} />}
         {view === AppView.ADD_TRANSACTION && <AddTransaction onAdd={handleAddTransaction} sheetDbUrl={settings.sheetDbUrl} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} />}
         {view === AppView.STATISTICS && <Statistics transactions={sortedTransactions} incomeCategories={settings.incomeCategories} investmentCategories={settings.investmentCategories} expenseCategories={settings.expenseCategories} />}
-        {view === AppView.DATABASE && <Database transactions={sortedTransactions} onUpdate={handleUpdateTransaction} onDelete={handleDeleteTransaction} settings={settings} onRefresh={handleRefreshFromSheet} />}
+        {view === AppView.DATABASE && <Database transactions={sortedTransactions} onUpdate={handleUpdateTransaction} onDelete={handleDeleteTransaction} settings={settings} onRefresh={() => handleSyncData(settings.sheetDbUrl, "Form Input")} />}
         {view === AppView.BUDGET && <Budgeting onUpdateBudget={handleUpdateCategoryBudget} settings={settings} onBack={() => setView(AppView.SETTINGS)} onShowNotification={showNotification}/>}
         {view === AppView.AI_TOOLS && <AiTools 
             sheetDbUrl={settings.sheetDbUrl} 
@@ -273,7 +290,16 @@ const App: React.FC = () => {
             isSelectModeActive={isAiSelectModeActive}
             onToggleSelectMode={setIsAiSelectModeActive}
         />}
-        {view === AppView.SETTINGS && <Settings settings={settings} onSave={handleSaveSettings} onNavigateToCategories={() => setView(AppView.EDIT_CATEGORIES)} onNavigateToBudget={() => setView(AppView.BUDGET)} />}
+        {view === AppView.SETTINGS && <Settings 
+            settings={settings} 
+            transactions={transactions} 
+            aiFoundItems={aiFoundItems} 
+            aiMatchedItems={aiMatchedItems}
+            onSave={handleSaveSettings} 
+            onImportData={handleImportData}
+            onNavigateToCategories={() => setView(AppView.EDIT_CATEGORIES)} 
+            onNavigateToBudget={() => setView(AppView.BUDGET)} 
+        />}
         {view === AppView.EDIT_CATEGORIES && <EditCategories settings={settings} onAddCategory={handleAddCategory} onDeleteCategory={handleDeleteCategory} onEditCategory={handleEditCategory} onReorderCategories={handleReorderCategories} transactions={sortedTransactions} onBack={() => setView(AppView.SETTINGS)} />}
       </main>
 
