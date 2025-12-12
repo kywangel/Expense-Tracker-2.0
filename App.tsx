@@ -119,7 +119,7 @@ const App: React.FC = () => {
   
   const handleAddCategory = (type: 'income' | 'expense' | 'investment', category: string) => {
     if (!category.trim()) return;
-    const key = `${type}Categories`;
+    const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
     const currentCategories = settings[key];
     if (currentCategories.includes(category.trim())) {
       showNotification("Category already exists.");
@@ -135,7 +135,7 @@ const App: React.FC = () => {
       showNotification(`Cannot delete "${categoryToDelete}" as it's in use.`);
       return;
     }
-    const key = `${type}Categories`;
+    const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
     setSettings(prev => ({ ...prev, [key]: prev[key].filter(c => c !== categoryToDelete) }));
     showNotification(`Deleted category: ${categoryToDelete}`);
   };
@@ -146,7 +146,7 @@ const App: React.FC = () => {
     newName: string
   ) => {
     if (!newName.trim() || oldName === newName) return;
-    const key = `${type}Categories` as const;
+    const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
     const currentCategories = settings[key];
     if (currentCategories.includes(newName.trim())) {
       showNotification("Category name already exists.");
@@ -180,7 +180,7 @@ const App: React.FC = () => {
     type: 'income' | 'expense' | 'investment',
     reorderedCategories: string[]
   ) => {
-    const key = `${type}Categories` as const;
+    const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
     setSettings(prev => ({ ...prev, [key]: reorderedCategories }));
   };
 
