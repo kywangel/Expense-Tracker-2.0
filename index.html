@@ -4,7 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>My AI Expense Tracker</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Expenses" />
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2382/2382533.png" />
+
+    <!-- Tailwind CSS (CDN kept for simplicity in this setup) -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
     <style>
       /* iOS-like scrollbar and touch behavior */
       body {
@@ -33,22 +44,33 @@
       .animate-fade-in-down {
         animation: fadeInDown 0.4s ease-out forwards;
       }
+
+      /* Safe area padding utilities */
+      .pt-safe-top {
+        padding-top: env(safe-area-inset-top, 20px);
+      }
+      .pb-safe-area {
+        padding-bottom: env(safe-area-inset-bottom, 20px);
+      }
     </style>
   <script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
-    "react/": "https://aistudiocdn.com/react@^19.2.1/",
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "date-fns": "https://aistudiocdn.com/date-fns@^4.1.0",
-    "date-fns/": "https://aistudiocdn.com/date-fns@^4.1.0/"
+    "date-fns": "https://esm.sh/date-fns@^4.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.33.0",
+    "vite": "https://esm.sh/vite@^7.2.7",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "recharts": "https://esm.sh/recharts@^3.5.1",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3"
   }
 }
 </script>
 </head>
   <body class="bg-gray-50 text-gray-900 font-sans antialiased selection:bg-blue-200">
     <div id="root"></div>
+    <!-- Vite Entry Point -->
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

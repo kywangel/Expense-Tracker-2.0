@@ -9,10 +9,30 @@ import {
     eachDayOfInterval, eachMonthOfInterval, getDay, addMonths, 
     isToday, isSameMonth, addWeeks, addYears, isSameYear
 } from 'date-fns';
-import startOfWeek from 'date-fns/startOfWeek';
-import startOfMonth from 'date-fns/startOfMonth';
-import startOfYear from 'date-fns/startOfYear';
-import subMonths from 'date-fns/subMonths';
+
+// Local implementations to bypass missing date-fns exports
+const startOfWeek = (date: Date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day;
+    d.setDate(diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+};
+
+const startOfMonth = (date: Date) => {
+    const d = new Date(date);
+    d.setDate(1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+};
+
+const startOfYear = (date: Date) => {
+    const d = new Date(date);
+    d.setMonth(0, 1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+};
 
 interface StatisticsProps {
   transactions: Transaction[];
@@ -100,7 +120,8 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         break;
       case '6M':
         const sixMonthsDate = addMonths(baseDate, dateOffset * 6);
-        interval = { start: startOfMonth(subMonths(sixMonthsDate, 5)), end: endOfMonth(sixMonthsDate) };
+        // Using addMonths(..., -5) instead of subMonths
+        interval = { start: startOfMonth(addMonths(sixMonthsDate, -5)), end: endOfMonth(sixMonthsDate) };
         dataPoints = eachMonthOfInterval(interval);
         formatLabel = (date) => format(date, 'MMM');
         break;
@@ -314,7 +335,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                     <span className="text-sm font-bold text-gray-600">
                         {
                             period === 'W' ? `${format(startOfWeek(addWeeks(new Date(), dateOffset)), 'd MMM')} - ${format(endOfWeek(addWeeks(new Date(), dateOffset)), 'd MMM')}` :
-                            period === '6M' ? `${format(startOfMonth(subMonths(addMonths(new Date(), dateOffset * 6), 5)), 'MMM yyyy')} - ${format(endOfMonth(addMonths(new Date(), dateOffset * 6)), 'MMM yyyy')}` :
+                            period === '6M' ? `${format(startOfMonth(addMonths(addMonths(new Date(), dateOffset * 6), -5)), 'MMM yyyy')} - ${format(endOfMonth(addMonths(new Date(), dateOffset * 6)), 'MMM yyyy')}` :
                             format(addYears(new Date(), dateOffset), 'yyyy')
                         }
                     </span>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { AppSettings } from '../types';
-import { format, addMonths, subMonths } from 'date-fns';
+import { format, addMonths } from 'date-fns';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
 
 interface BudgetingProps {
@@ -24,7 +24,7 @@ const Budgeting: React.FC<BudgetingProps> = ({ settings, onUpdateBudget, onBack,
     const budgetsForMonth = useMemo(() => monthlyCategoryBudgets[monthKey] || {}, [monthlyCategoryBudgets, monthKey]);
 
     const handleCopyFromPrevious = () => {
-        const prevMonthDate = subMonths(viewDate, 1);
+        const prevMonthDate = addMonths(viewDate, -1);
         const prevMonthKey = format(prevMonthDate, 'yyyy-MM');
         const prevMonthBudgets = monthlyCategoryBudgets[prevMonthKey] || {};
         
@@ -149,7 +149,7 @@ const Budgeting: React.FC<BudgetingProps> = ({ settings, onUpdateBudget, onBack,
             
             <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <button onClick={() => setViewDate(d => subMonths(d, 1))} className="p-2 rounded-full hover:bg-gray-100 text-gray-500">&lt;</button>
+                    <button onClick={() => setViewDate(d => addMonths(d, -1))} className="p-2 rounded-full hover:bg-gray-100 text-gray-500">&lt;</button>
                     <span className="font-bold text-gray-700 text-center w-32">{format(viewDate, 'MMMM yyyy')}</span>
                     <button onClick={() => setViewDate(d => addMonths(d, 1))} className="p-2 rounded-full hover:bg-gray-100 text-gray-500">&gt;</button>
                 </div>
