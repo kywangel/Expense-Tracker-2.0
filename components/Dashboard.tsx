@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Transaction } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
@@ -31,7 +32,18 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets
     return acc;
   }, {} as Record<string, number>);
 
-  const netBalance = transactions.reduce((sum, t) => sum + t.amount, 0);
+  // STRICT NET BALANCE FORMULA: Income - Expenses (ignoring investments)
+  // Expenses are typically stored as negative numbers in the DB, but to be safe based on user request:
+  // We sum Income (positive) and subtract absolute value of Expenses.
+  const totalIncome = transactions
+    .filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+  const totalExpenses = transactions
+    .filter(t => t.type === 'expense')
+    .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    
+  const netBalance = totalIncome - totalExpenses;
 
   const renderSection = (title: 'Income' | 'Expenses' | 'Savings', categories: string[], headerColor: string) => {
     const sectionKey = title.toLowerCase() as 'income' | 'expenses' | 'savings';
@@ -64,79 +76,79 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets
     const totalTracked = categories.reduce((sum, cat) => sum + (spendingMap[cat] || 0), 0);
 
     return (
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6 border border-gray-200">
-        <div className={`${headerColor} text-white px-4 py-2 font-bold text-sm flex justify-between items-center w-full`}>
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-6 border border-gray-200">
+        <div className={`${headerColor} text-white px-4 py-3 font-bold text-sm flex justify-between items-center w-full`}>
            <span>{title}</span>
            <div className="flex items-center gap-1">
-             <button onClick={() => toggleViewMode(sectionKey)} className={`p-1 rounded ${viewMode === 'table' ? 'bg-black/20' : ''}`}><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" /></svg></button>
-             <button onClick={() => toggleViewMode(sectionKey)} className={`p-1 rounded ${viewMode === 'chart' ? 'bg-black/20' : ''}`}><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" /><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" /></svg></button>
+             <button onClick={() => toggleViewMode(sectionKey)} className={`p-1.5 rounded-lg transition-colors ${viewMode === 'table' ? 'bg-black/20 text-white' : 'text-white/70 hover:bg-white/10'}`}><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" /></svg></button>
+             <button onClick={() => toggleViewMode(sectionKey)} className={`p-1.5 rounded-lg transition-colors ${viewMode === 'chart' ? 'bg-black/20 text-white' : 'text-white/70 hover:bg-white/10'}`}><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" /><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" /></svg></button>
            </div>
         </div>
 
         {viewMode === 'table' ? (
           <div className="animate-fade-in">
-            <div className="grid grid-cols-10 gap-2 px-4 py-2 bg-gray-50 text-[10px] font-bold text-gray-500 uppercase tracking-wide border-b border-gray-200">
-                <div className="col-span-3">Category</div>
-                <div className="col-span-2 text-right">Tracked</div>
-                <div className="col-span-2 text-right">Budget</div>
-                <div className="col-span-2 text-center">% Compl.</div>
-                <div className="col-span-1 text-right">Rem.</div>
-            </div>
+             <div className="flex justify-between px-4 py-2 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-wide border-b border-gray-100">
+                <span>Category / Progress</span>
+                <span>Tracked / Budget</span>
+             </div>
             <div className="divide-y divide-gray-100">
               {categories.map(cat => {
                 const tracked = spendingMap[cat] || 0;
                 const budget = currentMonthBudgets[cat] || 0;
                 const percent = budget > 0 ? (Math.abs(tracked) / budget) * 100 : 0;
-                const remaining = budget - Math.abs(tracked);
+                // const remaining = budget - Math.abs(tracked);
                 
                 const barColor = percent > 100 ? 'bg-red-500' :
                                  title === 'Income' ? 'bg-green-500' :
-                                 title === 'Expenses' ? 'bg-red-700' : 'bg-blue-600';
+                                 title === 'Expenses' ? 'bg-red-600' : 'bg-blue-600';
 
                 return (
-                  <div key={cat} className="grid grid-cols-10 gap-2 px-4 py-3 text-xs items-center hover:bg-gray-50 transition-colors">
-                    <div className="col-span-3 font-medium text-gray-800 truncate pr-1">{cat}</div>
-                    <div className="col-span-2 text-right text-gray-600 font-mono">{Math.abs(tracked).toFixed(1)}</div>
-                    <div className="col-span-2 text-right text-gray-600 font-mono">{budget > 0 ? budget.toFixed(1) : '-'}</div>
-                    <div className="col-span-2 flex items-center">
-                      <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                        <div className={`${barColor} h-full rounded-full`} style={{ width: `${Math.min(percent, 100)}%` }}></div>
-                      </div>
+                  <div key={cat} className="flex justify-between items-center py-3 px-4 hover:bg-gray-50 transition-colors">
+                    {/* Left Column: Category & Progress */}
+                    <div className="flex flex-col flex-1 pr-4 min-w-0">
+                        <span className="font-semibold text-gray-800 text-sm break-words leading-tight">{cat}</span>
+                        <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2 max-w-[140px]">
+                           <div className={`${barColor} h-1.5 rounded-full transition-all duration-500`} style={{ width: `${Math.min(percent, 100)}%` }}></div>
+                        </div>
                     </div>
-                     <div className={`col-span-1 text-right font-mono ${budget > 0 && remaining < 0 ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
-                        {budget > 0 ? remaining.toFixed(0) : '-'}
-                     </div>
+
+                    {/* Right Column: Values */}
+                    <div className="flex flex-col items-end shrink-0">
+                        <span className="font-bold text-gray-900 text-sm tracking-tight">{Math.abs(tracked).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
+                        <span className="text-xs text-gray-400 font-medium mt-0.5">/ {budget > 0 ? budget.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '--'}</span>
+                    </div>
                   </div>
                 );
               })}
             </div>
           </div>
         ) : (
-          <div className="p-4 flex items-center h-48 animate-fade-in">
-            <div className="w-1/2 h-full">
+          <div className="p-6 flex flex-col items-center animate-fade-in">
+            <div className="w-full h-56">
                <ResponsiveContainer>
                  <PieChart>
-                   <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="60%" outerRadius="80%" fill="#8884d8" paddingAngle={5}>
+                   <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="60%" outerRadius="80%" paddingAngle={5}>
                      {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />)}
                    </Pie>
                  </PieChart>
                </ResponsiveContainer>
             </div>
-            <div className="w-1/2 text-xs space-y-1 pl-4">
+            
+            <div className="w-full grid grid-cols-2 gap-x-6 gap-y-3 mt-4 pt-4 border-t border-gray-100">
                 {chartData.map((entry, index) => (
-                    <div key={entry.name} className="flex items-center justify-between">
-                        <div className="flex items-center">
-                           <span className="w-2.5 h-2.5 rounded-sm mr-2" style={{ backgroundColor: chartColors[index % chartColors.length] }}></span>
-                           <span className="text-gray-600 truncate max-w-[80px]">{entry.name}</span>
+                    <div key={entry.name} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center min-w-0">
+                           <span className="w-2.5 h-2.5 rounded-full mr-2 shrink-0" style={{ backgroundColor: chartColors[index % chartColors.length] }}></span>
+                           <span className="text-gray-600 truncate">{entry.name}</span>
                         </div>
-                        <span className="font-mono font-semibold text-gray-700">{entry.value.toLocaleString()}</span>
+                        <span className="font-mono font-semibold text-gray-900 ml-2">{entry.value.toLocaleString()}</span>
                     </div>
                 ))}
-                 <div className="font-bold pt-1 border-t mt-2 flex justify-between">
-                     <span>Total</span>
-                     <span>{Math.abs(totalTracked).toLocaleString()}</span>
-                 </div>
             </div>
+             <div className="font-bold text-sm text-gray-800 pt-4 mt-2 border-t w-full flex justify-between items-center">
+                 <span>Total</span>
+                 <span>{Math.abs(totalTracked).toLocaleString()}</span>
+             </div>
           </div>
         )}
       </div>
@@ -145,12 +157,12 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets
 
   return (
     <div className="space-y-4 pb-24">
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 text-center">
-        <p className="text-xs text-gray-500 font-semibold uppercase">Net Balance</p>
-        <p className={`text-2xl font-bold ${netBalance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center">
+        <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Net Balance</p>
+        <p className={`text-3xl font-extrabold tracking-tight ${netBalance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
           {netBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
         </p>
-        <p className="text-xs text-gray-400">Income - (Expenses + Investments)</p>
+        <p className="text-[10px] text-gray-400 mt-2 font-medium">Income - Expenses (Excl. Investments)</p>
       </div>
       {renderSection('Income', incomeCategories, 'bg-green-500')}
       {renderSection('Expenses', expenseCategories, 'bg-red-700')}

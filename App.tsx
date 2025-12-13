@@ -272,7 +272,7 @@ const App: React.FC = () => {
       <main className="flex-1 px-6 pt-2 pb-6 max-w-2xl mx-auto w-full">
         {view === AppView.DASHBOARD && <Dashboard transactions={sortedTransactions} currentMonthBudgets={currentMonthBudgets} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} />}
         {view === AppView.ADD_TRANSACTION && <AddTransaction onAdd={handleAddTransaction} sheetDbUrl={settings.sheetDbUrl} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} />}
-        {view === AppView.STATISTICS && <Statistics transactions={sortedTransactions} incomeCategories={settings.incomeCategories} investmentCategories={settings.investmentCategories} expenseCategories={settings.expenseCategories} />}
+        {view === AppView.STATISTICS && <Statistics transactions={sortedTransactions} incomeCategories={settings.incomeCategories} investmentCategories={settings.investmentCategories} expenseCategories={settings.expenseCategories} settings={settings} />}
         {view === AppView.DATABASE && <Database transactions={sortedTransactions} onUpdate={handleUpdateTransaction} onDelete={handleDeleteTransaction} settings={settings} onRefresh={() => handleSyncData(settings.sheetDbUrl, "Form Input")} />}
         {view === AppView.BUDGET && <Budgeting onUpdateBudget={handleUpdateCategoryBudget} settings={settings} onBack={() => setView(AppView.SETTINGS)} onShowNotification={showNotification}/>}
         {view === AppView.AI_TOOLS && <AiTools 

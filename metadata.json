@@ -1,5 +1,5 @@
 {
-  "name": "My AI Expense Tracker NON DEPLOY 2.0",
+  "name": "My AI Expense Tracker 2.0 DEPLOYED",
   "description": "A modern, iOS-style PWA for tracking expenses, analyzing statements with Gemini AI, and reconciling investments.",
   "requestFramePermissions": [
     "camera"
