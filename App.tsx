@@ -24,6 +24,8 @@ const App: React.FC = () => {
         masterSheetUrl: "https://docs.google.com/spreadsheets/d/1vfnpOxHRtljZlbnHyGe86A_1Xmb-RyweRd1aT1Ojk3M/edit?usp=sharing",
         monthlyBudget: 3000,
         monthlyCategoryBudgets: {},
+        baseCategoryBudgets: {},
+        yearlyBudgets: {},
         incomeCategories: DEFAULT_INCOME_CATEGORIES,
         expenseCategories: DEFAULT_EXPENSE_CATEGORIES,
         investmentCategories: DEFAULT_INVESTMENT_CATEGORIES
@@ -36,10 +38,23 @@ const App: React.FC = () => {
             parsed.monthlyCategoryBudgets = { [currentMonthKey]: parsed.categoryBudgets };
             delete parsed.categoryBudgets;
         }
+        
+        // Migration: If no baseCategoryBudgets, try to grab from the current month
+        if (!parsed.baseCategoryBudgets) {
+            const currentMonthKey = format(new Date(), 'yyyy-MM');
+            parsed.baseCategoryBudgets = parsed.monthlyCategoryBudgets?.[currentMonthKey] || {};
+        }
+
         // Ensure masterSheetUrl exists if migration from older version
         if (!parsed.masterSheetUrl) {
             parsed.masterSheetUrl = defaults.masterSheetUrl;
         }
+
+        // Ensure yearlyBudgets exists
+        if (!parsed.yearlyBudgets) {
+            parsed.yearlyBudgets = {};
+        }
+
         return { ...defaults, ...parsed };
     }
     return defaults;
@@ -179,7 +194,7 @@ const App: React.FC = () => {
         prev.map(t => t.category === oldName ? { ...t, category: newName.trim() } : t)
     );
     
-    // Update budgets
+    // Update budgets - Handle both legacy monthly, new base budgets, and yearly budgets
     const newMonthlyBudgets = { ...settings.monthlyCategoryBudgets };
     Object.keys(newMonthlyBudgets).forEach(monthKey => {
       if (newMonthlyBudgets[monthKey][oldName]) {
@@ -187,8 +202,27 @@ const App: React.FC = () => {
         delete newMonthlyBudgets[monthKey][oldName];
       }
     });
-    setSettings(prev => ({ ...prev, monthlyCategoryBudgets: newMonthlyBudgets }));
 
+    const newBaseBudgets = { ...settings.baseCategoryBudgets };
+    if (newBaseBudgets[oldName]) {
+        newBaseBudgets[newName.trim()] = newBaseBudgets[oldName];
+        delete newBaseBudgets[oldName];
+    }
+    
+    const newYearlyBudgets = { ...settings.yearlyBudgets };
+    Object.keys(newYearlyBudgets).forEach(yearKey => {
+         if(newYearlyBudgets[yearKey][oldName]) {
+             newYearlyBudgets[yearKey][newName.trim()] = newYearlyBudgets[yearKey][oldName];
+             delete newYearlyBudgets[yearKey][oldName];
+         }
+    });
+
+    setSettings(prev => ({ 
+        ...prev, 
+        monthlyCategoryBudgets: newMonthlyBudgets, 
+        baseCategoryBudgets: newBaseBudgets,
+        yearlyBudgets: newYearlyBudgets
+    }));
 
     showNotification(`Renamed "${oldName}" to "${newName.trim()}"`);
   };
@@ -201,18 +235,24 @@ const App: React.FC = () => {
     setSettings(prev => ({ ...prev, [key]: reorderedCategories }));
   };
 
-  const handleUpdateCategoryBudget = (monthKey: string, category: string, amount: number) => {
-      const newMonthlyBudgets = { ...settings.monthlyCategoryBudgets };
-      const currentMonthBudgets = { ...(newMonthlyBudgets[monthKey] || {}) };
-      
-      if (amount > 0) {
-        currentMonthBudgets[category] = amount;
-      } else {
-        delete currentMonthBudgets[category];
-      }
-      
-      newMonthlyBudgets[monthKey] = currentMonthBudgets;
-      setSettings(prev => ({ ...prev, monthlyCategoryBudgets: newMonthlyBudgets }));
+  // UPDATED: Now supports both Base Budget (when year is not provided) and Yearly Budget overrides
+  const handleUpdateBudget = (category: string, amount: number, year: number) => {
+      setSettings(prev => {
+          const newYearlyBudgets = { ...(prev.yearlyBudgets || {}) };
+          const yearKey = year.toString();
+          
+          if (!newYearlyBudgets[yearKey]) {
+              newYearlyBudgets[yearKey] = {};
+          }
+          
+          if (amount > 0) {
+              newYearlyBudgets[yearKey][category] = amount;
+          } else {
+              delete newYearlyBudgets[yearKey][category];
+          }
+          
+          return { ...prev, yearlyBudgets: newYearlyBudgets };
+      });
   };
 
   const handleAddTransaction = (t: Transaction) => {
@@ -245,8 +285,14 @@ const App: React.FC = () => {
     }
   };
 
-  const currentMonthKey = useMemo(() => format(new Date(), 'yyyy-MM'), []);
-  const currentMonthBudgets = useMemo(() => settings.monthlyCategoryBudgets[currentMonthKey] || {}, [settings.monthlyCategoryBudgets, currentMonthKey]);
+  // UPDATED: Compute effective budgets for the dashboard (Base merged with Current Year Overrides)
+  const dashboardBudgets = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const base = settings.baseCategoryBudgets || {};
+    const yearly = settings.yearlyBudgets?.[currentYear.toString()] || {};
+    // Yearly overrides take precedence
+    return { ...base, ...yearly };
+  }, [settings.baseCategoryBudgets, settings.yearlyBudgets]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col font-sans relative">
@@ -270,11 +316,11 @@ const App: React.FC = () => {
       </div>
 
       <main className="flex-1 px-6 pt-2 pb-6 max-w-2xl mx-auto w-full">
-        {view === AppView.DASHBOARD && <Dashboard transactions={sortedTransactions} currentMonthBudgets={currentMonthBudgets} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} />}
+        {view === AppView.DASHBOARD && <Dashboard transactions={sortedTransactions} baseCategoryBudgets={dashboardBudgets} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} cumulativeStartMonth={settings.cumulativeStartMonth} />}
         {view === AppView.ADD_TRANSACTION && <AddTransaction onAdd={handleAddTransaction} sheetDbUrl={settings.sheetDbUrl} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} />}
         {view === AppView.STATISTICS && <Statistics transactions={sortedTransactions} incomeCategories={settings.incomeCategories} investmentCategories={settings.investmentCategories} expenseCategories={settings.expenseCategories} settings={settings} />}
         {view === AppView.DATABASE && <Database transactions={sortedTransactions} onUpdate={handleUpdateTransaction} onDelete={handleDeleteTransaction} settings={settings} onRefresh={() => handleSyncData(settings.sheetDbUrl, "Form Input")} />}
-        {view === AppView.BUDGET && <Budgeting onUpdateBudget={handleUpdateCategoryBudget} settings={settings} onBack={() => setView(AppView.SETTINGS)} onShowNotification={showNotification}/>}
+        {view === AppView.BUDGET && <Budgeting onUpdateBudget={handleUpdateBudget} settings={settings} transactions={sortedTransactions} onBack={() => setView(AppView.SETTINGS)} onShowNotification={showNotification}/>}
         {view === AppView.AI_TOOLS && <AiTools 
             sheetDbUrl={settings.sheetDbUrl} 
             onAddTransaction={handleAddTransaction} 

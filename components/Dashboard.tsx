@@ -2,21 +2,27 @@
 import React, { useState, useMemo } from 'react';
 import { Transaction } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { differenceInCalendarMonths, getDaysInMonth, isSameMonth, isSameDay, startOfMonth, startOfDay } from 'date-fns';
 
 interface DashboardProps {
   transactions: Transaction[];
-  currentMonthBudgets: Record<string, number>;
+  baseCategoryBudgets: Record<string, number>;
   incomeCategories: string[];
   expenseCategories: string[];
   investmentCategories: string[];
+  cumulativeStartMonth?: string;
 }
 
 const INCOME_CHART_COLORS = ['#10B981', '#34D399', '#6EE7B7', '#A7F3D0', '#D1FAE5'];
 const EXPENSE_CHART_COLORS = ['#B91C1C', '#DC2626', '#EF4444', '#F87171', '#FCA5A5'];
 const INVESTMENT_CHART_COLORS = ['#2563EB', '#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE'];
 
+type ViewMode = 'monthly' | 'daily' | 'cumulative';
+type ChartMode = 'table' | 'chart';
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets, incomeCategories, expenseCategories, investmentCategories }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions, baseCategoryBudgets, incomeCategories, expenseCategories, investmentCategories, cumulativeStartMonth }) => {
+  const [viewTimeFrame, setViewTimeFrame] = useState<ViewMode>('monthly');
+  
   const [viewModes, setViewModes] = useState({
     income: 'table',
     expenses: 'table',
@@ -26,18 +32,65 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets
   const toggleViewMode = (section: 'income' | 'expenses' | 'savings') => {
     setViewModes(prev => ({ ...prev, [section]: prev[section] === 'table' ? 'chart' : 'table' }));
   };
-  
-  const spendingMap = transactions.reduce((acc, t) => {
-    acc[t.category] = (acc[t.category] || 0) + t.amount;
-    return acc;
-  }, {} as Record<string, number>);
 
-  // STRICT NET BALANCE FORMULA: Income - Expenses (ignoring investments)
-  const totalIncome = transactions
+  // --- Logic for Time Frame Filtering & Budget Scaling ---
+  
+  const today = new Date();
+
+  // 1. Determine Start Date for Cumulative View
+  const firstTxDate = useMemo(() => {
+    if (cumulativeStartMonth) {
+         const [year, month] = cumulativeStartMonth.split('-').map(Number);
+         // Month in Date constructor is 0-indexed
+         return new Date(year, month - 1, 1);
+    }
+    if (transactions.length === 0) return today;
+    const sorted = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    return new Date(sorted[0].date);
+  }, [transactions, cumulativeStartMonth]);
+
+  // 2. Filter Transactions based on View Mode
+  const filteredTransactions = useMemo(() => {
+      return transactions.filter(t => {
+          const tDate = new Date(t.date);
+          if (viewTimeFrame === 'monthly') {
+              return isSameMonth(tDate, today);
+          } else if (viewTimeFrame === 'daily') {
+              return isSameDay(tDate, today);
+          } else {
+              // Cumulative: All transactions since the first recorded one (or the custom start date)
+              return tDate >= startOfDay(firstTxDate);
+          }
+      });
+  }, [transactions, viewTimeFrame, firstTxDate]);
+
+  // 3. Calculate Spending Map for filtered transactions
+  const spendingMap = useMemo(() => {
+      return filteredTransactions.reduce((acc, t) => {
+        acc[t.category] = (acc[t.category] || 0) + t.amount;
+        return acc;
+      }, {} as Record<string, number>);
+  }, [filteredTransactions]);
+
+  // 4. Calculate Budget Multiplier
+  const budgetMultiplier = useMemo(() => {
+      if (viewTimeFrame === 'monthly') return 1;
+      if (viewTimeFrame === 'daily') {
+          return 1 / getDaysInMonth(today);
+      }
+      // Cumulative
+      // Logic: Number of months from firstTxDate to Now (inclusive)
+      const monthsDiff = differenceInCalendarMonths(today, firstTxDate);
+      return Math.max(1, monthsDiff + 1);
+  }, [viewTimeFrame, firstTxDate]);
+
+
+  // --- Totals Calculation ---
+  const totalIncome = filteredTransactions
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
-  const totalExpenses = transactions
+  const totalExpenses = filteredTransactions
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + Math.abs(t.amount), 0);
     
@@ -48,38 +101,20 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets
     const viewMode = viewModes[sectionKey];
 
     const getTopFiveData = () => {
-        // 1. Map to objects and filter zero values
         const validItems = categories
             .map(cat => ({ name: cat, value: Math.abs(spendingMap[cat] || 0) }))
             .filter(item => item.value > 0);
-            
-        // 2. Sort descending
         validItems.sort((a, b) => b.value - a.value);
-
-        // 3. Slice top 5 and remainder
         const top5 = validItems.slice(0, 5);
         const others = validItems.slice(5);
-        
-        // 4. Sum remainder
         const othersValue = others.reduce((sum, item) => sum + item.value, 0);
-        
-        // 5. Construct final data, handling "Others" collision
         const chartData = [...top5];
-        
         if (othersValue > 0) {
             const existingOthers = chartData.find(d => d.name === 'Others');
-            if (existingOthers) {
-                // If "Others" is already in top 5, add the remainder to it
-                existingOthers.value += othersValue;
-            } else {
-                // Otherwise add a new entry
-                chartData.push({ name: 'Others', value: othersValue });
-            }
+            if (existingOthers) existingOthers.value += othersValue;
+            else chartData.push({ name: 'Others', value: othersValue });
         }
-        
-        // Re-sort just in case "Others" became larger after merging
         chartData.sort((a, b) => b.value - a.value);
-        
         return chartData;
     };
     
@@ -107,12 +142,15 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets
           <div className="animate-fade-in">
              <div className="flex justify-between px-4 py-2 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-wide border-b border-gray-100">
                 <span>Category / Progress</span>
-                <span>Tracked / Budget</span>
+                <span>Tracked / {viewTimeFrame === 'monthly' ? 'Budget' : 'Target'}</span>
              </div>
             <div className="divide-y divide-gray-100">
               {categories.map(cat => {
                 const tracked = spendingMap[cat] || 0;
-                const budget = currentMonthBudgets[cat] || 0;
+                // Scale budget based on view multiplier
+                const baseBudget = baseCategoryBudgets[cat] || 0;
+                const budget = baseBudget * budgetMultiplier;
+                
                 const percent = budget > 0 ? (Math.abs(tracked) / budget) * 100 : 0;
                 
                 const barColor = percent > 100 ? 'bg-red-500' :
@@ -172,13 +210,29 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets
 
   return (
     <div className="space-y-4 pb-24">
+      {/* View Toggle */}
+      <div className="bg-gray-200 p-1 rounded-xl flex text-xs font-semibold">
+          {(['monthly', 'daily', 'cumulative'] as const).map(mode => (
+              <button 
+                  key={mode} 
+                  onClick={() => setViewTimeFrame(mode)} 
+                  className={`flex-1 py-1.5 rounded-lg capitalize transition-all duration-200 leading-none ${viewTimeFrame === mode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                  {mode}
+              </button>
+          ))}
+      </div>
+
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center">
-        <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Net Balance</p>
+        <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">
+            {viewTimeFrame} Net Balance
+        </p>
         <p className={`text-3xl font-extrabold tracking-tight ${netBalance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
           {netBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
         </p>
         <p className="text-[10px] text-gray-400 mt-2 font-medium">Income - Expenses (Excl. Investments)</p>
       </div>
+
       {renderSection('Income', incomeCategories, 'bg-green-500')}
       {renderSection('Expenses', expenseCategories, 'bg-red-700')}
       {renderSection('Savings', investmentCategories, 'bg-blue-600')}

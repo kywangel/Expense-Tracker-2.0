@@ -24,6 +24,8 @@ const Settings: React.FC<SettingsProps> = ({
   onNavigateToBudget 
 }) => {
   const [formUrl, setFormUrl] = useState(settings.sheetDbUrl);
+  // We don't maintain local state for startMonth anymore to ensure immediate sync
+  // but we can use it for rendering if needed. 
   const [saved, setSaved] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -43,12 +45,21 @@ const Settings: React.FC<SettingsProps> = ({
     setTimeout(() => setSaved(false), 2000);
   };
   
+  const handleStartMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newVal = e.target.value;
+      // Immediate save
+      onSave({
+          ...settings,
+          cumulativeStartMonth: newVal
+      });
+  };
+  
   const handleDownloadBackup = () => {
     const backupData = {
         version: "2.0",
         timestamp: new Date().toISOString(),
         transactions,
-        settings,
+        settings, // Use current settings directly
         aiFoundItems,
         aiMatchedItems
     };
@@ -114,6 +125,24 @@ const Settings: React.FC<SettingsProps> = ({
           </div>
           <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
         </button>
+      </div>
+
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+        <h3 className="font-bold text-gray-800">Display Preferences</h3>
+        
+        <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Cumulative View Start Month</label>
+            <input 
+                type="month" 
+                value={settings.cumulativeStartMonth || ''}
+                onChange={handleStartMonthChange}
+                className="w-full p-3 bg-gray-50 rounded-xl text-sm font-mono text-gray-600 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            />
+            <p className="text-[10px] text-gray-400 mt-2">
+                Set the starting point for the "Cumulative" view on the dashboard. Budget and spending will be calculated from this month onwards.
+                <br/><span className="text-green-600 font-bold">Auto-saves immediately.</span>
+            </p>
+        </div>
       </div>
       
       {/* New Data Persistence Section */}

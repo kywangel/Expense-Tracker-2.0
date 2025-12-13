@@ -266,10 +266,11 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         return totals;
     }, [transactions, baseDate]);
     
-    // Budget Calculations for Donut Chart
-    const monthKey = format(baseDate, 'yyyy-MM');
-    const monthBudgets: Record<string, number> = settings.monthlyCategoryBudgets[monthKey] || {};
-    const totalMonthBudget = Object.values(monthBudgets).reduce((sum: number, val: number) => sum + val, 0);
+    // Budget Calculations for Donut Chart (Updated to use Base Budgets)
+    const monthBudgets: Record<string, number> = settings.baseCategoryBudgets || {};
+    // Calculate total monthly budget from base budgets (since base budgets apply to all months now)
+    const totalMonthBudget = expenseCategories.reduce((sum, cat) => sum + (monthBudgets[cat] || 0), 0);
+    
     // Formula: Total spending of that day / (Total budgeting of that month/number of days of that month)
     const dailyAverageBudget = totalMonthBudget > 0 ? totalMonthBudget / daysInMonth.length : 100; // Default to 100 to avoid div by zero if no budget
 
@@ -376,7 +377,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   const handleResetSpendingView = () => {
     setDateOffset(0);
     setCalendarDate(new Date());
-    setPeriod('M'); // Force switch back to monthly view
+    // Removed setPeriod('M') to keep current view mode
   };
 
   return (
@@ -446,7 +447,10 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                 <div className="flex items-center justify-end gap-x-4 gap-y-2 flex-wrap max-w-xs sm:max-w-md">
                     <button
                       onClick={handleResetSpendingView}
-                      disabled={isSameMonth(calendarDate, new Date()) && period === 'M'}
+                      disabled={
+                          (period === 'M' && isSameMonth(calendarDate, new Date())) || 
+                          (period !== 'M' && dateOffset === 0)
+                      }
                       className="text-xs font-semibold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg disabled:text-gray-400 disabled:hover:bg-transparent"
                     >
                       Today

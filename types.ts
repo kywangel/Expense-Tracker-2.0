@@ -1,5 +1,4 @@
 
-
 export interface Transaction {
   id: string;
   date: string; // ISO Date string
@@ -36,7 +35,10 @@ export interface AppSettings {
   sheetDbUrl: string; // Source 1: Google Form Responses (Read-Only usually)
   masterSheetUrl: string; // Source 2: App Database Master (Read/Write)
   monthlyBudget: number; // Kept for potential future use or legacy
-  monthlyCategoryBudgets: Record<string, Record<string, number>>; // Keyed by 'YYYY-MM'
+  monthlyCategoryBudgets: Record<string, Record<string, number>>; // Kept for legacy/migration
+  baseCategoryBudgets: Record<string, number>; // New: The universal monthly budget
+  yearlyBudgets: Record<string, Record<string, number>>; // New: Overrides for specific years { "2025": { "Food": 500 } }
+  cumulativeStartMonth?: string; // New: YYYY-MM string for cumulative view start
   // Dynamic category lists
   incomeCategories: string[];
   expenseCategories: string[];
