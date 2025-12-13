@@ -270,6 +270,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     const monthKey = format(baseDate, 'yyyy-MM');
     const monthBudgets: Record<string, number> = settings.monthlyCategoryBudgets[monthKey] || {};
     const totalMonthBudget = Object.values(monthBudgets).reduce((sum: number, val: number) => sum + val, 0);
+    // Formula: Total spending of that day / (Total budgeting of that month/number of days of that month)
     const dailyAverageBudget = totalMonthBudget > 0 ? totalMonthBudget / daysInMonth.length : 100; // Default to 100 to avoid div by zero if no budget
 
     const selectedDayTotal = dailyTotals[format(selectedDate, 'd')] || 0;

@@ -5,7 +5,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
 interface DashboardProps {
   transactions: Transaction[];
-  currentMonthBudgets: Record<string, number>; // Renamed for clarity
+  currentMonthBudgets: Record<string, number>;
   incomeCategories: string[];
   expenseCategories: string[];
   investmentCategories: string[];
@@ -33,8 +33,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets
   }, {} as Record<string, number>);
 
   // STRICT NET BALANCE FORMULA: Income - Expenses (ignoring investments)
-  // Expenses are typically stored as negative numbers in the DB, but to be safe based on user request:
-  // We sum Income (positive) and subtract absolute value of Expenses.
   const totalIncome = transactions
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + Math.abs(t.amount), 0);
@@ -50,18 +48,38 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets
     const viewMode = viewModes[sectionKey];
 
     const getTopFiveData = () => {
-        const sorted = categories
+        // 1. Map to objects and filter zero values
+        const validItems = categories
             .map(cat => ({ name: cat, value: Math.abs(spendingMap[cat] || 0) }))
-            .filter(item => item.value > 0)
-            .sort((a, b) => b.value - a.value);
+            .filter(item => item.value > 0);
+            
+        // 2. Sort descending
+        validItems.sort((a, b) => b.value - a.value);
 
-        const top5 = sorted.slice(0, 5);
-        const othersValue = sorted.slice(5).reduce((sum, item) => sum + item.value, 0);
+        // 3. Slice top 5 and remainder
+        const top5 = validItems.slice(0, 5);
+        const others = validItems.slice(5);
         
+        // 4. Sum remainder
+        const othersValue = others.reduce((sum, item) => sum + item.value, 0);
+        
+        // 5. Construct final data, handling "Others" collision
         const chartData = [...top5];
+        
         if (othersValue > 0) {
-            chartData.push({ name: 'Others', value: othersValue });
+            const existingOthers = chartData.find(d => d.name === 'Others');
+            if (existingOthers) {
+                // If "Others" is already in top 5, add the remainder to it
+                existingOthers.value += othersValue;
+            } else {
+                // Otherwise add a new entry
+                chartData.push({ name: 'Others', value: othersValue });
+            }
         }
+        
+        // Re-sort just in case "Others" became larger after merging
+        chartData.sort((a, b) => b.value - a.value);
+        
         return chartData;
     };
     
@@ -96,7 +114,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets
                 const tracked = spendingMap[cat] || 0;
                 const budget = currentMonthBudgets[cat] || 0;
                 const percent = budget > 0 ? (Math.abs(tracked) / budget) * 100 : 0;
-                // const remaining = budget - Math.abs(tracked);
                 
                 const barColor = percent > 100 ? 'bg-red-500' :
                                  title === 'Income' ? 'bg-green-500' :
@@ -104,7 +121,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets
 
                 return (
                   <div key={cat} className="flex justify-between items-center py-3 px-4 hover:bg-gray-50 transition-colors">
-                    {/* Left Column: Category & Progress */}
                     <div className="flex flex-col flex-1 pr-4 min-w-0">
                         <span className="font-semibold text-gray-800 text-sm break-words leading-tight">{cat}</span>
                         <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2 max-w-[140px]">
@@ -112,7 +128,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, currentMonthBudgets
                         </div>
                     </div>
 
-                    {/* Right Column: Values */}
                     <div className="flex flex-col items-end shrink-0">
                         <span className="font-bold text-gray-900 text-sm tracking-tight">{Math.abs(tracked).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
                         <span className="text-xs text-gray-400 font-medium mt-0.5">/ {budget > 0 ? budget.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '--'}</span>

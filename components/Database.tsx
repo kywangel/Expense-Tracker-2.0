@@ -60,8 +60,7 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
     const headers = "Date,Amount,Category,Note,Type\n";
     const csvContent = filteredTransactions
       .map(tx => {
-          // Priority: Source -> Note -> Empty
-          // User requested: "if it's from IOS Shortcut then put IOS Shortcut"
+          // Use Source if present (e.g., 'IOS shortcut'), otherwise Note
           const finalNote = tx.source || tx.note || '';
           
           return `${tx.date},${tx.amount},"${(tx.category || '').replace(/"/g, '""')}","${finalNote.replace(/"/g, '""')}",${tx.type}`;
