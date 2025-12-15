@@ -46,7 +46,8 @@ const parseDateAsHK = (dateStr: string): string => {
 export const fetchTransactions = async (
   sheetUrlOrId: string, 
   incomeCategories: string[], 
-  investmentCategories: string[]
+  investmentCategories: string[],
+  expenseCategories: string[] = []
 ): Promise<Transaction[]> => {
   let fetchUrl = sheetUrlOrId;
   let isCsv = false;
@@ -82,8 +83,7 @@ export const fetchTransactions = async (
         const noteIdx = headers.findIndex(h => h.includes('note') || h.includes('desc') || h.includes('item'));
         const timestampIdx = headers.findIndex(h => h.includes('timestamp')); // Detect Google Form Timestamp
 
-        // Default indices fallback logic handled inside map
-        const cI = catIdx > -1 ? catIdx : 3;
+        // Default indices fallback
         const nI = noteIdx > -1 ? noteIdx : 4;
 
         return rows.slice(1).map((row, idx) => {
@@ -92,28 +92,26 @@ export const fetchTransactions = async (
             // Helper to prevent parsing Dates as Amounts
             const looksLikeDate = (val: string) => {
                 if (!val) return false;
-                // Matches YYYY-MM-DD or DD/MM/YYYY or YYYY/MM/DD or similar patterns with separators
                 return /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(val) || /^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}/.test(val);
             };
 
             // Amount Extraction
+            // Strict Priority: Column C (Index 2)
             let amountStr = "";
             
-            // Strategy 1: Explicit Header found
+            // 1. Check Header if exists
             if (amountIdx > -1 && row[amountIdx]) {
                 amountStr = row[amountIdx];
             } 
-            // Strategy 2: Fallback scan (only if value looks like number AND NOT like a date)
+            // 2. Fallback: Strict preference for Column C (Index 2)
             else {
-                // Check Col C (Index 2)
                 if (row[2] && /[\d\.\$]+/.test(row[2]) && !looksLikeDate(row[2])) {
                     amountStr = row[2];
                 }
-                // Check Col B (Index 1) 
+                // Fallbacks if C is empty (though user said it SHOULD be C)
                 else if (row[1] && /[\d\.\$]+/.test(row[1]) && !looksLikeDate(row[1])) {
                     amountStr = row[1];
                 }
-                 // Check Col D (Index 3)
                 else if (row.length > 3 && row[3] && /[\d\.\$]+/.test(row[3]) && !looksLikeDate(row[3])) {
                     amountStr = row[3];
                 }
@@ -121,18 +119,14 @@ export const fetchTransactions = async (
             
             amountStr = amountStr.replace(/[^0-9.-]+/g,"");
 
-            // Date Extraction Logic (User Request: Col B then Col A)
+            // Date Extraction Logic (Col B then Col A)
             let dateStr = "";
-            
-            // 1. If explicit 'date' header exists, prefer it
             if (dateIdx > -1 && row[dateIdx]) {
                 dateStr = row[dateIdx];
             }
-            // 2. If no data yet, try explicit 'timestamp' header
             if (!dateStr && timestampIdx > -1 && row[timestampIdx]) {
                 dateStr = row[timestampIdx];
             }
-            // 3. Fallback / User Priority: Check Column B (Index 1) then Column A (Index 0)
             if (!dateStr) {
                 if (row.length > 1 && row[1]) dateStr = row[1];
                 else if (row.length > 0 && row[0]) dateStr = row[0];
@@ -140,11 +134,29 @@ export const fetchTransactions = async (
 
             const isoDate = parseDateAsHK(dateStr);
 
-            const category = (catIdx > -1 ? row[catIdx] : row[cI]) || "Uncategorized";
+            // Category Extraction
+            // Strict Priority: Column D (Index 3)
+            let rawCat = "";
+            if (catIdx > -1 && row[catIdx]) {
+                rawCat = row[catIdx];
+            } else if (row[3]) {
+                rawCat = row[3];
+            }
+            
+            let category = rawCat.trim();
+            
+            // Validation: Map to "Others" if unknown
+            const knownCategories = new Set([...incomeCategories, ...investmentCategories, ...expenseCategories]);
+            const matchedCat = [...knownCategories].find(c => c.toLowerCase() === category.toLowerCase());
+            
+            if (matchedCat) {
+                category = matchedCat;
+            } else {
+                category = "Others";
+            }
             
             // Robust ID Generation
             let stableId = `csv-${idx}-${isoDate}-${amountStr}`;
-            // If Col A is timestamp-like, use it for ID stability
             if (row[0] && row[0].length > 10) {
                  const tsSafe = row[0].replace(/[^a-zA-Z0-9]/g, '');
                  stableId = `form-${tsSafe}`;
@@ -163,15 +175,26 @@ export const fetchTransactions = async (
     } else {
         const data = await res.json();
         const items = Array.isArray(data) ? data : (data.data || []);
-        return items.map((d: any) => ({
-            id: d.id || Math.random().toString(36).substr(2, 9),
-            date: d.date, 
-            amount: parseFloat(d.amount),
-            category: d.category,
-            note: d.note,
-            type: determineType(d.category),
-            source: d.source || 'IOS shortcut' 
-        }));
+        
+        // Also apply 'Others' logic to JSON data if keys match
+        const knownCategories = new Set([...incomeCategories, ...investmentCategories, ...expenseCategories]);
+
+        return items.map((d: any) => {
+            let cat = d.category || "Others";
+            const matched = [...knownCategories].find(c => c.toLowerCase() === cat.trim().toLowerCase());
+            if (matched) cat = matched;
+            else cat = "Others";
+
+            return {
+                id: d.id || Math.random().toString(36).substr(2, 9),
+                date: d.date, 
+                amount: parseFloat(d.amount),
+                category: cat,
+                note: d.note,
+                type: determineType(cat),
+                source: d.source || 'IOS shortcut' 
+            };
+        });
     }
   } catch (e) {
     console.warn("Fetch Error. Ensure the Google Sheet is 'Anyone with the link' or 'Published to Web'.", e);

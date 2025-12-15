@@ -114,7 +114,8 @@ const App: React.FC = () => {
         const fetchedData = await fetchTransactions(
             sourceUrl, 
             settings.incomeCategories, 
-            settings.investmentCategories
+            settings.investmentCategories,
+            settings.expenseCategories
         );
         
         setTransactions(prevTxs => {
