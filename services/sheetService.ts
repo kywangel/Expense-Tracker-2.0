@@ -27,7 +27,6 @@ const parseDateAsHK = (dateStr: string): string => {
     if (!dateStr) return toHKDateString(new Date());
 
     // Try to isolate the date part (YYYY-MM-DD or MM/DD/YYYY) to avoid time shifting
-    // Google sheets often output yyyy-MM-dd HH:mm:ss
     const cleanDateStr = dateStr.split(' ')[0].split('T')[0];
     
     // If it matches YYYY-MM-DD, create as UTC to ensure stability
@@ -83,21 +82,42 @@ export const fetchTransactions = async (
         const noteIdx = headers.findIndex(h => h.includes('note') || h.includes('desc') || h.includes('item'));
         const timestampIdx = headers.findIndex(h => h.includes('timestamp')); // Detect Google Form Timestamp
 
-        // Default indices if headers missing, but we handle date separately below
-        const aI = amountIdx > -1 ? amountIdx : 2; // Default Amount to Col C (index 2) if standard form? Or 1? 
-        // Let's stick to simple defaults but override date logic
+        // Default indices fallback logic handled inside map
         const cI = catIdx > -1 ? catIdx : 3;
         const nI = noteIdx > -1 ? noteIdx : 4;
 
         return rows.slice(1).map((row, idx) => {
             if (row.length < 2) return null;
             
+            // Helper to prevent parsing Dates as Amounts
+            const looksLikeDate = (val: string) => {
+                if (!val) return false;
+                // Matches YYYY-MM-DD or DD/MM/YYYY or YYYY/MM/DD or similar patterns with separators
+                return /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(val) || /^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}/.test(val);
+            };
+
             // Amount Extraction
-            // If header found, use it. Else check typical columns C (2) or B (1)
             let amountStr = "";
-            if (amountIdx > -1 && row[amountIdx]) amountStr = row[amountIdx];
-            else if (row[2] && /[\d\.\$]+/.test(row[2])) amountStr = row[2]; // Try Col C
-            else if (row[1] && /[\d\.\$]+/.test(row[1])) amountStr = row[1]; // Try Col B fallback
+            
+            // Strategy 1: Explicit Header found
+            if (amountIdx > -1 && row[amountIdx]) {
+                amountStr = row[amountIdx];
+            } 
+            // Strategy 2: Fallback scan (only if value looks like number AND NOT like a date)
+            else {
+                // Check Col C (Index 2)
+                if (row[2] && /[\d\.\$]+/.test(row[2]) && !looksLikeDate(row[2])) {
+                    amountStr = row[2];
+                }
+                // Check Col B (Index 1) 
+                else if (row[1] && /[\d\.\$]+/.test(row[1]) && !looksLikeDate(row[1])) {
+                    amountStr = row[1];
+                }
+                 // Check Col D (Index 3)
+                else if (row.length > 3 && row[3] && /[\d\.\$]+/.test(row[3]) && !looksLikeDate(row[3])) {
+                    amountStr = row[3];
+                }
+            }
             
             amountStr = amountStr.replace(/[^0-9.-]+/g,"");
 
