@@ -1,5 +1,4 @@
 
-
 export const DEFAULT_EXPENSE_CATEGORIES = [
   "Family Allowance", "Lunch", "Entertainment", "Dinner", "Balancing Figure", 
   "Subscription (HK Career)", "Transportation", "Clothing", "My Treat", 
@@ -28,3 +27,14 @@ export const getTransactionType = (
 
 export const DEFAULT_SHEET_ID = "1BScmi-6DI1Cj7VRMaKdpSVYyo2ibtHfkV3icz1OYBdM";
 export const DEFAULT_GID = "78662654";
+
+// Helper to enforce Hong Kong Timezone (UTC+8) for all date strings (YYYY-MM-DD)
+export const toHKDateString = (dateInput?: Date | string | number) => {
+  const date = dateInput ? new Date(dateInput) : new Date();
+  return new Intl.DateTimeFormat('en-CA', { 
+    timeZone: 'Asia/Hong_Kong', 
+    year: 'numeric', 
+    month: '2-digit', 
+    day: '2-digit' 
+  }).format(date);
+};

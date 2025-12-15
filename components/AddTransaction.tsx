@@ -1,8 +1,8 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { Transaction } from '../types';
 import { saveTransaction } from '../services/sheetService';
+import { toHKDateString } from '../constants';
 
 interface AddTransactionProps {
   onAdd: (t: Transaction) => void;
@@ -16,7 +16,8 @@ const AddTransaction: React.FC<AddTransactionProps> = ({ onAdd, sheetDbUrl, inco
   const [type, setType] = useState<'expense' | 'income' | 'investment'>('expense');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState(expenseCategories[0] || '');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  // Default to HK Time
+  const [date, setDate] = useState(toHKDateString(new Date()));
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -108,7 +109,7 @@ const AddTransaction: React.FC<AddTransactionProps> = ({ onAdd, sheetDbUrl, inco
                 </div>
             </div>
             <div>
-                 <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Date</label>
+                 <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Date (HKT)</label>
                  <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full px-4 py-3 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800" />
             </div>
         </div>

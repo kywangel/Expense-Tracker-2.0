@@ -1,8 +1,9 @@
+
 import React, { useState, useRef } from 'react';
 import { Transaction, FoundItem, MatchedItemPair } from '../types';
 import { analyzeStatement, fileToGenerativePart } from '../services/geminiService';
 import { saveTransaction } from '../services/sheetService';
-import { getTransactionType } from '../constants';
+import { getTransactionType, toHKDateString } from '../constants';
 
 interface AiToolsProps {
   sheetDbUrl: string;
@@ -155,7 +156,8 @@ const AiTools: React.FC<AiToolsProps> = ({
 
     const newTx: Transaction = {
         id: `local-${Date.now()}`,
-        date: item.date || new Date().toISOString().split('T')[0],
+        // Use HK Date String for consistency
+        date: item.date || toHKDateString(new Date()),
         amount: finalAmount, category: selectedCategory,
         note: item.note || "Imported Statement Item", type: selectedType,
         source: 'PDF file'

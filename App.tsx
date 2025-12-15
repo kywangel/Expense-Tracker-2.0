@@ -11,7 +11,7 @@ import EditCategories from './components/EditCategories';
 import Database from './components/Database';
 import { Transaction, AppView, AppSettings, FoundItem, MatchedItemPair } from './types';
 import { fetchTransactions } from './services/sheetService';
-import { DEFAULT_SHEET_ID, DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INVESTMENT_CATEGORIES } from './constants';
+import { DEFAULT_SHEET_ID, DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INVESTMENT_CATEGORIES, toHKDateString } from './constants';
 import { format } from 'date-fns';
 
 const App: React.FC = () => {
@@ -34,14 +34,14 @@ const App: React.FC = () => {
         const parsed = JSON.parse(saved);
         // Migration for old data structure
         if (parsed.categoryBudgets && !parsed.monthlyCategoryBudgets) {
-            const currentMonthKey = format(new Date(), 'yyyy-MM');
+            const currentMonthKey = toHKDateString(new Date()).substring(0, 7);
             parsed.monthlyCategoryBudgets = { [currentMonthKey]: parsed.categoryBudgets };
             delete parsed.categoryBudgets;
         }
         
         // Migration: If no baseCategoryBudgets, try to grab from the current month
         if (!parsed.baseCategoryBudgets) {
-            const currentMonthKey = format(new Date(), 'yyyy-MM');
+            const currentMonthKey = toHKDateString(new Date()).substring(0, 7);
             parsed.baseCategoryBudgets = parsed.monthlyCategoryBudgets?.[currentMonthKey] || {};
         }
 
@@ -118,15 +118,19 @@ const App: React.FC = () => {
         );
         
         setTransactions(prevTxs => {
-            const existingIds = new Set(prevTxs.map(t => t.id));
-            const newTxsFromSheet = fetchedData.filter(t => t && t.id && !existingIds.has(t.id));
-            if (newTxsFromSheet.length > 0) {
-                showNotification(`Synced ${newTxsFromSheet.length} items from ${sourceName}.`);
-                return [...prevTxs, ...newTxsFromSheet];
+            // CRITICAL FIX: To prevent duplicates when sheet rows shift (delete/sort),
+            // we first remove ALL existing transactions that came from the sheet (source 'IOS shortcut').
+            // Then we replace them with the fresh fetch.
+            // We preserve 'app input' and 'PDF file' sources.
+            const manualTxs = prevTxs.filter(t => t.source !== 'IOS shortcut');
+            
+            if (fetchedData.length > 0) {
+                showNotification(`Refreshed ${fetchedData.length} items from Sheet.`);
+                return [...manualTxs, ...fetchedData];
             } else {
-                showNotification(`No new items in ${sourceName}.`);
+                showNotification(`Synced. No items found in sheet.`);
+                return manualTxs;
             }
-            return prevTxs;
         });
 
       } catch (error) {

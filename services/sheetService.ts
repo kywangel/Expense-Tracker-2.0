@@ -1,7 +1,6 @@
 
-
 import { Transaction } from "../types";
-import { DEFAULT_SHEET_ID, DEFAULT_GID, getTransactionType } from "../constants";
+import { DEFAULT_SHEET_ID, DEFAULT_GID, getTransactionType, toHKDateString } from "../constants";
 
 // Helper to parse CSV line correctly handling quotes
 const parseCSVLine = (str: string) => {
@@ -21,6 +20,28 @@ const parseCSVLine = (str: string) => {
   }
   arr.push(col);
   return arr.map(s => s.trim().replace(/^"|"$/g, ''));
+};
+
+// Helper to safely parse a date string as HKT (or absolute date) without shifting
+const parseDateAsHK = (dateStr: string): string => {
+    if (!dateStr) return toHKDateString(new Date());
+
+    // Try to isolate the date part (YYYY-MM-DD or MM/DD/YYYY) to avoid time shifting
+    // Google sheets often output yyyy-MM-dd HH:mm:ss
+    const cleanDateStr = dateStr.split(' ')[0].split('T')[0];
+    
+    // If it matches YYYY-MM-DD, create as UTC to ensure stability
+    if (/^\d{4}-\d{2}-\d{2}$/.test(cleanDateStr)) {
+        return cleanDateStr; 
+    }
+    
+    // Fallback for other formats (e.g. 12/31/2024)
+    const parsed = new Date(dateStr);
+    if (!isNaN(parsed.getTime())) {
+        return toHKDateString(parsed);
+    }
+    
+    return toHKDateString(new Date());
 };
 
 export const fetchTransactions = async (
@@ -60,44 +81,76 @@ export const fetchTransactions = async (
         const amountIdx = headers.findIndex(h => h.includes('amount') || h.includes('cost') || h.includes('price'));
         const catIdx = headers.findIndex(h => h.includes('category') || h.includes('type'));
         const noteIdx = headers.findIndex(h => h.includes('note') || h.includes('desc') || h.includes('item'));
+        const timestampIdx = headers.findIndex(h => h.includes('timestamp')); // Detect Google Form Timestamp
 
-        const dI = dateIdx > -1 ? dateIdx : 0;
-        const aI = amountIdx > -1 ? amountIdx : 1;
-        const cI = catIdx > -1 ? catIdx : 2;
-        const nI = noteIdx > -1 ? noteIdx : 3;
+        // Default indices if headers missing, but we handle date separately below
+        const aI = amountIdx > -1 ? amountIdx : 2; // Default Amount to Col C (index 2) if standard form? Or 1? 
+        // Let's stick to simple defaults but override date logic
+        const cI = catIdx > -1 ? catIdx : 3;
+        const nI = noteIdx > -1 ? noteIdx : 4;
 
         return rows.slice(1).map((row, idx) => {
             if (row.length < 2) return null;
-            const amountStr = row[aI]?.replace(/[^0-9.-]+/g,"");
-            const dateStr = row[dI];
-            let isoDate = new Date().toISOString().split('T')[0];
-            if(dateStr) {
-                const parsed = new Date(dateStr);
-                if(!isNaN(parsed.getTime())) isoDate = parsed.toISOString().split('T')[0];
+            
+            // Amount Extraction
+            // If header found, use it. Else check typical columns C (2) or B (1)
+            let amountStr = "";
+            if (amountIdx > -1 && row[amountIdx]) amountStr = row[amountIdx];
+            else if (row[2] && /[\d\.\$]+/.test(row[2])) amountStr = row[2]; // Try Col C
+            else if (row[1] && /[\d\.\$]+/.test(row[1])) amountStr = row[1]; // Try Col B fallback
+            
+            amountStr = amountStr.replace(/[^0-9.-]+/g,"");
+
+            // Date Extraction Logic (User Request: Col B then Col A)
+            let dateStr = "";
+            
+            // 1. If explicit 'date' header exists, prefer it
+            if (dateIdx > -1 && row[dateIdx]) {
+                dateStr = row[dateIdx];
             }
-            const category = row[cI] || "Uncategorized";
+            // 2. If no data yet, try explicit 'timestamp' header
+            if (!dateStr && timestampIdx > -1 && row[timestampIdx]) {
+                dateStr = row[timestampIdx];
+            }
+            // 3. Fallback / User Priority: Check Column B (Index 1) then Column A (Index 0)
+            if (!dateStr) {
+                if (row.length > 1 && row[1]) dateStr = row[1];
+                else if (row.length > 0 && row[0]) dateStr = row[0];
+            }
+
+            const isoDate = parseDateAsHK(dateStr);
+
+            const category = (catIdx > -1 ? row[catIdx] : row[cI]) || "Uncategorized";
+            
+            // Robust ID Generation
+            let stableId = `csv-${idx}-${isoDate}-${amountStr}`;
+            // If Col A is timestamp-like, use it for ID stability
+            if (row[0] && row[0].length > 10) {
+                 const tsSafe = row[0].replace(/[^a-zA-Z0-9]/g, '');
+                 stableId = `form-${tsSafe}`;
+            }
+
             return {
-                id: `csv-${idx}-${row[dI]}-${amountStr}`, // More unique ID
+                id: stableId, 
                 date: isoDate,
                 amount: parseFloat(amountStr) || 0,
                 category: category,
-                note: row[nI] || "",
+                note: (noteIdx > -1 ? row[noteIdx] : row[nI]) || "",
                 type: determineType(category),
                 source: 'IOS shortcut'
             };
         }).filter(Boolean) as Transaction[];
     } else {
         const data = await res.json();
-        // Handle both direct array or wrapped object structure
         const items = Array.isArray(data) ? data : (data.data || []);
         return items.map((d: any) => ({
             id: d.id || Math.random().toString(36).substr(2, 9),
-            date: d.date,
+            date: d.date, 
             amount: parseFloat(d.amount),
             category: d.category,
             note: d.note,
             type: determineType(d.category),
-            source: d.source || 'app input'
+            source: d.source || 'IOS shortcut' 
         }));
     }
   } catch (e) {
@@ -183,7 +236,6 @@ export const saveBulkTransactions = async (sheetDbUrl: string, transactions: Tra
                 return { success: false, count: successCount, error: json.message || "Script Error" };
             }
         } catch (e) {
-            // This is the most common error: The script crashes and returns an HTML error page
             console.error("Invalid JSON response:", text.substring(0, 100));
             return { success: false, count: successCount, error: "Invalid response. Check if 'New Deployment' was created." };
         }
