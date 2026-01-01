@@ -17,88 +17,113 @@ import { format } from 'date-fns';
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.DASHBOARD);
   
+  // Robust initial state loading with error handling
   const [settings, setSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem('appSettings');
-    const defaults: AppSettings = { 
-        sheetDbUrl: DEFAULT_SHEET_ID, 
-        masterSheetUrl: "https://docs.google.com/spreadsheets/d/1vfnpOxHRtljZlbnHyGe86A_1Xmb-RyweRd1aT1Ojk3M/edit?usp=sharing",
-        monthlyBudget: 3000,
-        monthlyCategoryBudgets: {},
-        baseCategoryBudgets: {},
-        yearlyBudgets: {},
-        incomeCategories: DEFAULT_INCOME_CATEGORIES,
-        expenseCategories: DEFAULT_EXPENSE_CATEGORIES,
-        investmentCategories: DEFAULT_INVESTMENT_CATEGORIES
-    };
-    if (saved) {
-        const parsed = JSON.parse(saved);
-        // Migration for old data structure
-        if (parsed.categoryBudgets && !parsed.monthlyCategoryBudgets) {
-            const currentMonthKey = toHKDateString(new Date()).substring(0, 7);
-            parsed.monthlyCategoryBudgets = { [currentMonthKey]: parsed.categoryBudgets };
-            delete parsed.categoryBudgets;
-        }
-        
-        // Migration: If no baseCategoryBudgets, try to grab from the current month
-        if (!parsed.baseCategoryBudgets) {
-            const currentMonthKey = toHKDateString(new Date()).substring(0, 7);
-            parsed.baseCategoryBudgets = parsed.monthlyCategoryBudgets?.[currentMonthKey] || {};
-        }
+    try {
+      const saved = localStorage.getItem('appSettings');
+      const defaults: AppSettings = { 
+          sheetDbUrl: DEFAULT_SHEET_ID, 
+          masterSheetUrl: "https://docs.google.com/spreadsheets/d/1vfnpOxHRtljZlbnHyGe86A_1Xmb-RyweRd1aT1Ojk3M/edit?usp=sharing",
+          monthlyBudget: 3000,
+          monthlyCategoryBudgets: {},
+          baseCategoryBudgets: {},
+          yearlyBudgets: {},
+          incomeCategories: DEFAULT_INCOME_CATEGORIES,
+          expenseCategories: DEFAULT_EXPENSE_CATEGORIES,
+          investmentCategories: DEFAULT_INVESTMENT_CATEGORIES,
+          dailyViewCategories: [],
+          dailyTransactionsPerMonth: {}
+      };
 
-        // Ensure masterSheetUrl exists if migration from older version
-        if (!parsed.masterSheetUrl) {
-            parsed.masterSheetUrl = defaults.masterSheetUrl;
-        }
+      if (saved) {
+          const parsed = JSON.parse(saved);
+          // Migration logic
+          if (parsed.categoryBudgets && !parsed.monthlyCategoryBudgets) {
+              const currentMonthKey = toHKDateString(new Date()).substring(0, 7);
+              parsed.monthlyCategoryBudgets = { [currentMonthKey]: parsed.categoryBudgets };
+          }
+          if (!parsed.baseCategoryBudgets) {
+              const currentMonthKey = toHKDateString(new Date()).substring(0, 7);
+              parsed.baseCategoryBudgets = parsed.monthlyCategoryBudgets?.[currentMonthKey] || {};
+          }
 
-        // Ensure yearlyBudgets exists
-        if (!parsed.yearlyBudgets) {
-            parsed.yearlyBudgets = {};
-        }
-
-        return { ...defaults, ...parsed };
+          // Ensure all new fields exist
+          return {
+            ...defaults,
+            ...parsed,
+            yearlyBudgets: parsed.yearlyBudgets || {},
+            dailyViewCategories: parsed.dailyViewCategories || [],
+            dailyTransactionsPerMonth: parsed.dailyTransactionsPerMonth || {}
+          };
+      }
+      return defaults;
+    } catch (e) {
+      console.error("Failed to load settings from storage", e);
+      return { 
+          sheetDbUrl: DEFAULT_SHEET_ID, 
+          masterSheetUrl: "", 
+          monthlyBudget: 3000,
+          monthlyCategoryBudgets: {},
+          baseCategoryBudgets: {},
+          yearlyBudgets: {},
+          incomeCategories: DEFAULT_INCOME_CATEGORIES,
+          expenseCategories: DEFAULT_EXPENSE_CATEGORIES,
+          investmentCategories: DEFAULT_INVESTMENT_CATEGORIES,
+          dailyViewCategories: [],
+          dailyTransactionsPerMonth: {}
+      };
     }
-    return defaults;
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('transactions');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('transactions');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
   });
   
   const [aiFoundItems, setAiFoundItems] = useState<FoundItem[]>(() => {
+    try {
       const saved = localStorage.getItem('aiFoundItems');
       return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
   });
 
   const [aiMatchedItems, setAiMatchedItems] = useState<MatchedItemPair[]>(() => {
-    const saved = localStorage.getItem('aiMatchedItems');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('aiMatchedItems');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
   });
   
   const [notification, setNotification] = useState<string | null>(null);
   const [isAiSelectModeActive, setIsAiSelectModeActive] = useState(false);
 
-
-  // Memoize sorted transactions
   const sortedTransactions = useMemo(() => {
     return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions]);
 
-  useEffect(() => {
-    localStorage.setItem('transactions', JSON.stringify(transactions));
-  }, [transactions]);
-  
-  useEffect(() => {
-    localStorage.setItem('aiFoundItems', JSON.stringify(aiFoundItems));
-  }, [aiFoundItems]);
+  // Unified persistence with Quota Check
+  const safeSave = (key: string, data: any) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+        setNotification("Storage full! Please clear some items.");
+      }
+    }
+  };
 
-  useEffect(() => {
-    localStorage.setItem('aiMatchedItems', JSON.stringify(aiMatchedItems));
-  }, [aiMatchedItems]);
-  
-  useEffect(() => {
-    localStorage.setItem('appSettings', JSON.stringify(settings));
-  }, [settings]);
+  useEffect(() => safeSave('transactions', transactions), [transactions]);
+  useEffect(() => safeSave('aiFoundItems', aiFoundItems), [aiFoundItems]);
+  useEffect(() => safeSave('aiMatchedItems', aiMatchedItems), [aiMatchedItems]);
+  useEffect(() => safeSave('appSettings', settings), [settings]);
 
   const showNotification = (message: string) => {
     setNotification(message);
@@ -119,12 +144,7 @@ const App: React.FC = () => {
         );
         
         setTransactions(prevTxs => {
-            // CRITICAL FIX: To prevent duplicates when sheet rows shift (delete/sort),
-            // we first remove ALL existing transactions that came from the sheet (source 'IOS shortcut').
-            // Then we replace them with the fresh fetch.
-            // We preserve 'app input' and 'PDF file' sources.
             const manualTxs = prevTxs.filter(t => t.source !== 'IOS shortcut');
-            
             if (fetchedData.length > 0) {
                 showNotification(`Refreshed ${fetchedData.length} items from Sheet.`);
                 return [...manualTxs, ...fetchedData];
@@ -133,13 +153,11 @@ const App: React.FC = () => {
                 return manualTxs;
             }
         });
-
       } catch (error) {
         console.error(`Failed to sync from ${sourceName}:`, error);
         showNotification(`Failed to sync from ${sourceName}.`);
       }
   };
-
 
   const handleSaveSettings = (newSettings: AppSettings) => {
     setSettings(newSettings);
@@ -173,7 +191,11 @@ const App: React.FC = () => {
       return;
     }
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
-    setSettings(prev => ({ ...prev, [key]: prev[key].filter(c => c !== categoryToDelete) }));
+    setSettings(prev => ({ 
+        ...prev, 
+        [key]: prev[key].filter(c => c !== categoryToDelete),
+        dailyViewCategories: prev.dailyViewCategories.filter(c => c !== categoryToDelete) 
+    }));
     showNotification(`Deleted category: ${categoryToDelete}`);
   };
 
@@ -184,22 +206,31 @@ const App: React.FC = () => {
   ) => {
     if (!newName.trim() || oldName === newName) return;
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
-    const currentCategories = settings[key];
-    if (currentCategories.includes(newName.trim())) {
+    if (settings[key].includes(newName.trim())) {
       showNotification("Category name already exists.");
       return;
     }
 
-    setSettings(prev => ({
-      ...prev,
-      [key]: prev[key].map(c => c === oldName ? newName.trim() : c)
-    }));
+    setSettings(prev => {
+        const updatedFreq = { ...prev.dailyTransactionsPerMonth };
+        if (updatedFreq[oldName]) {
+            updatedFreq[newName.trim()] = updatedFreq[oldName];
+            delete updatedFreq[oldName];
+        }
+
+        return {
+            ...prev,
+            [key]: prev[key].map(c => c === oldName ? newName.trim() : c),
+            dailyViewCategories: prev.dailyViewCategories.map(c => c === oldName ? newName.trim() : c),
+            dailyTransactionsPerMonth: updatedFreq
+        };
+    });
 
     setTransactions(prev => 
         prev.map(t => t.category === oldName ? { ...t, category: newName.trim() } : t)
     );
     
-    // Update budgets - Handle both legacy monthly, new base budgets, and yearly budgets
+    // Update budgets
     const newMonthlyBudgets = { ...settings.monthlyCategoryBudgets };
     Object.keys(newMonthlyBudgets).forEach(monthKey => {
       if (newMonthlyBudgets[monthKey][oldName]) {
@@ -240,22 +271,13 @@ const App: React.FC = () => {
     setSettings(prev => ({ ...prev, [key]: reorderedCategories }));
   };
 
-  // UPDATED: Now supports both Base Budget (when year is not provided) and Yearly Budget overrides
   const handleUpdateBudget = (category: string, amount: number, year: number) => {
       setSettings(prev => {
           const newYearlyBudgets = { ...(prev.yearlyBudgets || {}) };
           const yearKey = year.toString();
-          
-          if (!newYearlyBudgets[yearKey]) {
-              newYearlyBudgets[yearKey] = {};
-          }
-          
-          if (amount > 0) {
-              newYearlyBudgets[yearKey][category] = amount;
-          } else {
-              delete newYearlyBudgets[yearKey][category];
-          }
-          
+          if (!newYearlyBudgets[yearKey]) newYearlyBudgets[yearKey] = {};
+          if (amount > 0) newYearlyBudgets[yearKey][category] = amount;
+          else delete newYearlyBudgets[yearKey][category];
           return { ...prev, yearlyBudgets: newYearlyBudgets };
       });
   };
@@ -290,12 +312,10 @@ const App: React.FC = () => {
     }
   };
 
-  // UPDATED: Compute effective budgets for the dashboard (Base merged with Current Year Overrides)
   const dashboardBudgets = useMemo(() => {
     const currentYear = new Date().getFullYear();
     const base = settings.baseCategoryBudgets || {};
     const yearly = settings.yearlyBudgets?.[currentYear.toString()] || {};
-    // Yearly overrides take precedence
     return { ...base, ...yearly };
   }, [settings.baseCategoryBudgets, settings.yearlyBudgets]);
 

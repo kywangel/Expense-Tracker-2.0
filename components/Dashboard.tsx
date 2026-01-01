@@ -2,7 +2,19 @@
 import React, { useState, useMemo } from 'react';
 import { Transaction } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
-import { differenceInCalendarMonths, getDaysInMonth, isSameMonth, isSameDay, startOfMonth, startOfDay } from 'date-fns';
+import { 
+  differenceInCalendarMonths, 
+  getDaysInMonth, 
+  isSameMonth, 
+  isSameDay, 
+  startOfDay, 
+  addMonths, 
+  subMonths, 
+  addDays, 
+  subDays, 
+  format, 
+  isToday 
+} from 'date-fns';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -18,53 +30,69 @@ const EXPENSE_CHART_COLORS = ['#B91C1C', '#DC2626', '#EF4444', '#F87171', '#FCA5
 const INVESTMENT_CHART_COLORS = ['#2563EB', '#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE'];
 
 type ViewMode = 'monthly' | 'daily' | 'cumulative';
-type ChartMode = 'table' | 'chart';
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, baseCategoryBudgets, incomeCategories, expenseCategories, investmentCategories, cumulativeStartMonth }) => {
+const Dashboard: React.FC<DashboardProps> = ({ 
+  transactions, 
+  baseCategoryBudgets, 
+  incomeCategories, 
+  expenseCategories, 
+  investmentCategories, 
+  cumulativeStartMonth 
+}) => {
   const [viewTimeFrame, setViewTimeFrame] = useState<ViewMode>('monthly');
+  const [viewDate, setViewDate] = useState<Date>(new Date());
   
-  const [viewModes, setViewModes] = useState({
-    income: 'table',
-    expenses: 'table',
-    savings: 'table',
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    income: false,
+    expenses: false,
+    savings: false
   });
 
-  const toggleViewMode = (section: 'income' | 'expenses' | 'savings') => {
-    setViewModes(prev => ({ ...prev, [section]: prev[section] === 'table' ? 'chart' : 'table' }));
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  // --- Logic for Time Frame Filtering & Budget Scaling ---
-  
-  const today = new Date();
+  const toggleCategoryDrilldown = (cat: string) => {
+    setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+  };
 
-  // 1. Determine Start Date for Cumulative View
+  const handlePrev = () => {
+    if (viewTimeFrame === 'monthly') setViewDate(prev => subMonths(prev, 1));
+    else if (viewTimeFrame === 'daily') setViewDate(prev => subDays(prev, 1));
+  };
+
+  const handleNext = () => {
+    if (viewTimeFrame === 'monthly') setViewDate(prev => addMonths(prev, 1));
+    else if (viewTimeFrame === 'daily') setViewDate(prev => addDays(prev, 1));
+  };
+
+  const jumpToToday = () => setViewDate(new Date());
+
   const firstTxDate = useMemo(() => {
     if (cumulativeStartMonth) {
          const [year, month] = cumulativeStartMonth.split('-').map(Number);
-         // Month in Date constructor is 0-indexed
          return new Date(year, month - 1, 1);
     }
-    if (transactions.length === 0) return today;
+    if (transactions.length === 0) return new Date();
     const sorted = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     return new Date(sorted[0].date);
   }, [transactions, cumulativeStartMonth]);
 
-  // 2. Filter Transactions based on View Mode
   const filteredTransactions = useMemo(() => {
       return transactions.filter(t => {
           const tDate = new Date(t.date);
           if (viewTimeFrame === 'monthly') {
-              return isSameMonth(tDate, today);
+              return isSameMonth(tDate, viewDate);
           } else if (viewTimeFrame === 'daily') {
-              return isSameDay(tDate, today);
+              return isSameDay(tDate, viewDate);
           } else {
-              // Cumulative: All transactions since the first recorded one (or the custom start date)
-              return tDate >= startOfDay(firstTxDate);
+              return tDate >= startOfDay(firstTxDate) && tDate <= startOfDay(viewDate);
           }
       });
-  }, [transactions, viewTimeFrame, firstTxDate]);
+  }, [transactions, viewTimeFrame, viewDate, firstTxDate]);
 
-  // 3. Calculate Spending Map for filtered transactions
   const spendingMap = useMemo(() => {
       return filteredTransactions.reduce((acc, t) => {
         acc[t.category] = (acc[t.category] || 0) + t.amount;
@@ -72,20 +100,15 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, baseCategoryBudgets
       }, {} as Record<string, number>);
   }, [filteredTransactions]);
 
-  // 4. Calculate Budget Multiplier
   const budgetMultiplier = useMemo(() => {
       if (viewTimeFrame === 'monthly') return 1;
       if (viewTimeFrame === 'daily') {
-          return 1 / getDaysInMonth(today);
+          return 1 / getDaysInMonth(viewDate);
       }
-      // Cumulative
-      // Logic: Number of months from firstTxDate to Now (inclusive)
-      const monthsDiff = differenceInCalendarMonths(today, firstTxDate);
+      const monthsDiff = differenceInCalendarMonths(viewDate, firstTxDate);
       return Math.max(1, monthsDiff + 1);
-  }, [viewTimeFrame, firstTxDate]);
+  }, [viewTimeFrame, firstTxDate, viewDate]);
 
-
-  // --- Totals Calculation ---
   const totalIncome = filteredTransactions
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + Math.abs(t.amount), 0);
@@ -98,124 +121,174 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, baseCategoryBudgets
 
   const renderSection = (title: 'Income' | 'Expenses' | 'Savings', categories: string[], headerColor: string) => {
     const sectionKey = title.toLowerCase() as 'income' | 'expenses' | 'savings';
-    const viewMode = viewModes[sectionKey];
+    const isExpanded = expandedSections[sectionKey];
 
-    const getTopFiveData = () => {
-        const validItems = categories
-            .map(cat => ({ name: cat, value: Math.abs(spendingMap[cat] || 0) }))
-            .filter(item => item.value > 0);
-        validItems.sort((a, b) => b.value - a.value);
-        const top5 = validItems.slice(0, 5);
-        const others = validItems.slice(5);
-        const othersValue = others.reduce((sum, item) => sum + item.value, 0);
-        const chartData = [...top5];
-        if (othersValue > 0) {
-            const existingOthers = chartData.find(d => d.name === 'Others');
-            if (existingOthers) existingOthers.value += othersValue;
-            else chartData.push({ name: 'Others', value: othersValue });
-        }
-        chartData.sort((a, b) => b.value - a.value);
-        return chartData;
-    };
+    const validItems = categories
+        .map(cat => ({ name: cat, value: Math.abs(spendingMap[cat] || 0) }))
+        .filter(item => item.value > 0);
     
-    const chartData = useMemo(() => getTopFiveData(), [categories, spendingMap]);
+    validItems.sort((a, b) => b.value - a.value);
+    const top5 = validItems.slice(0, 5);
+    const othersValue = validItems.slice(5).reduce((sum, item) => sum + item.value, 0);
     
-    const chartColors = useMemo(() => {
-        if (title === 'Income') return INCOME_CHART_COLORS;
-        if (title === 'Expenses') return EXPENSE_CHART_COLORS;
-        return INVESTMENT_CHART_COLORS;
-    }, [title]);
-
-    const totalTracked = categories.reduce((sum, cat) => sum + (spendingMap[cat] || 0), 0);
+    const chartData = [...top5];
+    if (othersValue > 0) {
+        chartData.push({ name: 'Others', value: othersValue });
+    }
+    
+    const chartColors = title === 'Income' ? INCOME_CHART_COLORS : (title === 'Expenses' ? EXPENSE_CHART_COLORS : INVESTMENT_CHART_COLORS);
+    const totalTracked = categories.reduce((sum, cat) => sum + Math.abs(spendingMap[cat] || 0), 0);
 
     return (
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-6 border border-gray-200">
-        <div className={`${headerColor} text-white px-4 py-3 font-bold text-sm flex justify-between items-center w-full`}>
+        <div className={`${headerColor} text-white px-4 py-3 font-bold text-sm flex justify-between items-center`}>
            <span>{title}</span>
-           <div className="flex items-center gap-1">
-             <button onClick={() => toggleViewMode(sectionKey)} className={`p-1.5 rounded-lg transition-colors ${viewMode === 'table' ? 'bg-black/20 text-white' : 'text-white/70 hover:bg-white/10'}`}><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" /></svg></button>
-             <button onClick={() => toggleViewMode(sectionKey)} className={`p-1.5 rounded-lg transition-colors ${viewMode === 'chart' ? 'bg-black/20 text-white' : 'text-white/70 hover:bg-white/10'}`}><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" /><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" /></svg></button>
-           </div>
+           <span className="text-xs opacity-90">${totalTracked.toLocaleString()}</span>
         </div>
 
-        {viewMode === 'table' ? (
-          <div className="animate-fade-in">
-             <div className="flex justify-between px-4 py-2 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-wide border-b border-gray-100">
-                <span>Category / Progress</span>
-                <span>Tracked / {viewTimeFrame === 'monthly' ? 'Budget' : 'Target'}</span>
-             </div>
-            <div className="divide-y divide-gray-100">
-              {categories.map(cat => {
-                const tracked = spendingMap[cat] || 0;
-                // Scale budget based on view multiplier
-                const baseBudget = baseCategoryBudgets[cat] || 0;
-                const budget = baseBudget * budgetMultiplier;
-                
-                const percent = budget > 0 ? (Math.abs(tracked) / budget) * 100 : 0;
-                
-                const barColor = percent > 100 ? 'bg-red-500' :
-                                 title === 'Income' ? 'bg-green-500' :
-                                 title === 'Expenses' ? 'bg-red-600' : 'bg-blue-600';
+        <div className="p-4 flex flex-col items-center">
+            {totalTracked > 0 ? (
+              <>
+                <div className="w-full h-48 sm:h-56">
+                  <ResponsiveContainer>
+                    <PieChart>
+                      <Pie 
+                        data={chartData} 
+                        dataKey="value" 
+                        nameKey="name" 
+                        cx="50%" 
+                        cy="50%" 
+                        innerRadius="60%" 
+                        outerRadius="85%" 
+                        paddingAngle={4}
+                      >
+                        {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />)}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="w-full grid grid-cols-2 gap-x-4 gap-y-2 mt-2">
+                    {chartData.map((entry, index) => (
+                        <div key={entry.name} className="flex items-center justify-between text-[10px] sm:text-xs">
+                            <div className="flex items-center min-w-0">
+                               <span className="w-2 h-2 rounded-full mr-1.5 shrink-0" style={{ backgroundColor: chartColors[index % chartColors.length] }}></span>
+                               <span className="text-gray-500 truncate">{entry.name}</span>
+                            </div>
+                            <span className="font-mono font-bold text-gray-700 ml-1">${entry.value.toLocaleString()}</span>
+                        </div>
+                    ))}
+                </div>
+              </>
+            ) : (
+              <div className="h-32 flex items-center justify-center text-gray-300 text-sm font-medium italic">
+                No data for this period
+              </div>
+            )}
+        </div>
 
-                return (
-                  <div key={cat} className="flex justify-between items-center py-3 px-4 hover:bg-gray-50 transition-colors">
+        <button 
+          onClick={() => toggleSection(sectionKey)}
+          className="w-full py-3 border-t border-gray-100 flex items-center justify-center gap-2 text-blue-600 font-bold text-xs bg-blue-50/30 hover:bg-blue-50 transition-colors"
+        >
+          {isExpanded ? 'Hide Category Details' : 'Show Category Details'}
+          <svg className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        </button>
+
+        {isExpanded && (
+          <div className="animate-fade-in bg-gray-50/30">
+            <div className="flex justify-between px-4 py-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 bg-gray-50">
+                <span>Category / Progress</span>
+                <span>Tracked / Budget</span>
+            </div>
+            {categories.map(cat => {
+              const tracked = spendingMap[cat] || 0;
+              const budget = (baseCategoryBudgets[cat] || 0) * budgetMultiplier;
+              const percent = budget > 0 ? (Math.abs(tracked) / budget) * 100 : 0;
+              const isDrilledDown = expandedCategories[`${sectionKey}-${cat}`];
+              
+              const barColor = percent > 100 ? 'bg-red-500' :
+                               title === 'Income' ? 'bg-green-500' :
+                               title === 'Expenses' ? 'bg-red-600' : 'bg-blue-600';
+
+              // Stronger background colors for expanded categories
+              const activeBg = title === 'Income' ? 'bg-green-100' :
+                               title === 'Expenses' ? 'bg-red-100' : 'bg-blue-100';
+
+              // Lighter background colors for sub-items
+              const childBg = title === 'Income' ? 'bg-green-50/60' :
+                              title === 'Expenses' ? 'bg-red-50/60' : 'bg-blue-50/60';
+
+              const catTransactions = filteredTransactions.filter(t => t.category === cat);
+
+              return (
+                <div key={cat} className="flex flex-col border-b border-gray-100 last:border-0">
+                  {/* Category Summary Row */}
+                  <div 
+                    onClick={() => toggleCategoryDrilldown(`${sectionKey}-${cat}`)}
+                    className={`flex justify-between items-center py-4 px-4 transition-colors cursor-pointer ${isDrilledDown ? activeBg : 'hover:bg-white/50'}`}
+                  >
                     <div className="flex flex-col flex-1 pr-4 min-w-0">
-                        <span className="font-semibold text-gray-800 text-sm break-words leading-tight">{cat}</span>
-                        <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2 max-w-[140px]">
-                           <div className={`${barColor} h-1.5 rounded-full transition-all duration-500`} style={{ width: `${Math.min(percent, 100)}%` }}></div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                           <span className="font-bold text-gray-800 text-sm leading-tight">{cat}</span>
+                           <span className="text-[10px] text-gray-500 font-bold bg-white/50 px-1.5 rounded-md border border-gray-100">
+                             {catTransactions.length} items
+                           </span>
+                           <svg className={`w-3 h-3 text-gray-400 transition-transform ${isDrilledDown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                        </div>
+                        <div className="w-full bg-gray-200/50 rounded-full h-1 mt-2 max-w-[140px]">
+                           <div className={`${barColor} h-1 rounded-full transition-all duration-500`} style={{ width: `${Math.min(percent, 100)}%` }}></div>
                         </div>
                     </div>
-
                     <div className="flex flex-col items-end shrink-0">
-                        <span className="font-bold text-gray-900 text-sm tracking-tight">{Math.abs(tracked).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
-                        <span className="text-xs text-gray-400 font-medium mt-0.5">/ {budget > 0 ? budget.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '--'}</span>
+                        <span className="font-mono font-bold text-gray-900 text-sm">${Math.abs(tracked).toLocaleString()}</span>
+                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">/ {budget > 0 ? Math.round(budget).toLocaleString() : '--'}</span>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="p-6 flex flex-col items-center animate-fade-in">
-            <div className="w-full h-56">
-               <ResponsiveContainer>
-                 <PieChart>
-                   <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="60%" outerRadius="80%" paddingAngle={5}>
-                     {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />)}
-                   </Pie>
-                 </PieChart>
-               </ResponsiveContainer>
-            </div>
-            
-            <div className="w-full grid grid-cols-2 gap-x-6 gap-y-3 mt-4 pt-4 border-t border-gray-100">
-                {chartData.map((entry, index) => (
-                    <div key={entry.name} className="flex items-center justify-between text-xs">
-                        <div className="flex items-center min-w-0">
-                           <span className="w-2.5 h-2.5 rounded-full mr-2 shrink-0" style={{ backgroundColor: chartColors[index % chartColors.length] }}></span>
-                           <span className="text-gray-600 truncate">{entry.name}</span>
-                        </div>
-                        <span className="font-mono font-semibold text-gray-900 ml-2">{entry.value.toLocaleString()}</span>
+
+                  {/* Hierarchical Transaction Drilldown with increased indentation (tab spacing) */}
+                  {isDrilledDown && (
+                    <div className={`divide-y divide-white/50`}>
+                        {catTransactions.length > 0 ? (
+                          catTransactions.map((tx, idx) => (
+                            <div key={tx.id} className={`flex justify-between items-center py-3 pl-12 pr-4 ${childBg}`}>
+                                <div className="flex flex-col min-w-0">
+                                    <span className="text-[11px] font-bold text-gray-800 truncate">
+                                        {tx.note || format(new Date(tx.date), 'MMMM d, yyyy')}
+                                    </span>
+                                    {tx.note && <span className="text-[9px] text-gray-500 font-semibold">{format(new Date(tx.date), 'MMM d, yyyy')}</span>}
+                                </div>
+                                <span className={`text-[11px] font-mono font-bold shrink-0 ml-4 ${tx.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
+                                    {tx.type === 'income' ? '+' : ''}{Math.abs(tx.amount).toLocaleString()}
+                                </span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className={`py-4 pl-12 pr-4 text-[10px] text-gray-400 italic ${childBg}`}>No transactions found</div>
+                        )}
                     </div>
-                ))}
-            </div>
-             <div className="font-bold text-sm text-gray-800 pt-4 mt-2 border-t w-full flex justify-between items-center">
-                 <span>Total</span>
-                 <span>{Math.abs(totalTracked).toLocaleString()}</span>
-             </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
     );
   };
 
+  const periodLabel = useMemo(() => {
+    if (viewTimeFrame === 'monthly') return format(viewDate, 'MMMM yyyy');
+    if (viewTimeFrame === 'daily') return format(viewDate, 'MMMM d, yyyy');
+    return `Cumulative (from ${format(firstTxDate, 'MMM yyyy')})`;
+  }, [viewTimeFrame, viewDate, firstTxDate]);
+
   return (
     <div className="space-y-4 pb-24">
-      {/* View Toggle */}
       <div className="bg-gray-200 p-1 rounded-xl flex text-xs font-semibold">
           {(['monthly', 'daily', 'cumulative'] as const).map(mode => (
               <button 
                   key={mode} 
-                  onClick={() => setViewTimeFrame(mode)} 
+                  onClick={() => { setViewTimeFrame(mode); jumpToToday(); }} 
                   className={`flex-1 py-1.5 rounded-lg capitalize transition-all duration-200 leading-none ${viewTimeFrame === mode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
                   {mode}
@@ -223,14 +296,53 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, baseCategoryBudgets
           ))}
       </div>
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center">
-        <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">
-            {viewTimeFrame} Net Balance
+      <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handlePrev} 
+              className="w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-600 active:scale-90 transition-transform"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <button 
+              onClick={handleNext} 
+              className="w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-600 active:scale-90 transition-transform"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
+            </button>
+          </div>
+
+          <div className="text-center">
+             <p className="text-sm font-extrabold text-gray-800 tracking-tight">{periodLabel}</p>
+          </div>
+
+          <button 
+            onClick={jumpToToday}
+            disabled={viewTimeFrame === 'cumulative' || (viewTimeFrame === 'monthly' ? isSameMonth(new Date(), viewDate) : isSameDay(new Date(), viewDate))}
+            className="text-[10px] font-bold text-blue-600 uppercase tracking-widest disabled:opacity-30 px-2 py-1 bg-blue-50 rounded-md"
+          >
+            Today
+          </button>
+      </div>
+
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 to-blue-500"></div>
+        <p className="text-[10px] text-gray-400 font-extrabold uppercase tracking-[0.2em] mb-1">
+            Net Balance
         </p>
-        <p className={`text-3xl font-extrabold tracking-tight ${netBalance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+        <p className={`text-3xl font-black tracking-tighter ${netBalance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
           {netBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
         </p>
-        <p className="text-[10px] text-gray-400 mt-2 font-medium">Income - Expenses (Excl. Investments)</p>
+        <div className="flex justify-center gap-4 mt-3 pt-3 border-t border-gray-50">
+            <div className="text-left">
+                <span className="block text-[8px] text-gray-400 font-bold uppercase">Income</span>
+                <span className="font-mono font-bold text-green-600 text-xs">${totalIncome.toLocaleString()}</span>
+            </div>
+            <div className="text-left">
+                <span className="block text-[8px] text-gray-400 font-bold uppercase">Expenses</span>
+                <span className="font-mono font-bold text-red-500 text-xs">${totalExpenses.toLocaleString()}</span>
+            </div>
+        </div>
       </div>
 
       {renderSection('Income', incomeCategories, 'bg-green-500')}

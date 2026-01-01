@@ -43,6 +43,9 @@ export interface AppSettings {
   incomeCategories: string[];
   expenseCategories: string[];
   investmentCategories: string[];
+  // Daily View Config
+  dailyViewCategories: string[]; // Ordered list of categories for the Daily Table
+  dailyTransactionsPerMonth: Record<string, number>; // Map of category -> target frequency
 }
 
 export interface ChartDataPoint {
