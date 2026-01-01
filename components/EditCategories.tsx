@@ -12,8 +12,16 @@ interface EditCategoriesProps {
   onBack: () => void;
 }
 
+interface DragState {
+  index: number;
+  type: string;
+  startY: number;
+  currentY: number;
+  initialCategories: string[];
+}
+
 const EditCategories: React.FC<EditCategoriesProps> = ({ 
-    settings, transactions, onAddCategory, onDeleteCategory, 
+    settings, onAddCategory, onDeleteCategory, 
     onEditCategory, onReorderCategories, onBack 
 }) => {
   const [newIncomeCat, setNewIncomeCat] = useState('');
@@ -23,9 +31,9 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
   const [editing, setEditing] = useState<{ type: string; name: string } | null>(null);
   const [editingText, setEditingText] = useState('');
 
-  // Mobile-native drag state
-  const [activeDragIndex, setActiveDragIndex] = useState<number | null>(null);
-  const [dragType, setDragType] = useState<string | null>(null);
+  // Enhanced Drag State
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const containerRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const handleEditClick = (type: string, name: string) => {
     setEditing({ type, name });
@@ -43,37 +51,64 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
   };
 
   /**
-   * Enhanced Pointer Move Logic
-   * Uses real-time coordinate tracking to trigger swaps with smooth transitions
+   * Fluid Pointer Move Logic
+   * Updates coordinates for visual translation and triggers logical swaps when crossing thresholds.
    */
-  const handlePointerMove = (e: React.PointerEvent, type: 'income' | 'expense' | 'investment', categories: string[]) => {
-      if (activeDragIndex === null || dragType !== type) return;
+  const handlePointerMove = (e: PointerEvent) => {
+    if (!dragState) return;
 
-      const container = e.currentTarget as HTMLElement;
-      const children = Array.from(container.children) as HTMLElement[];
-      const pointerY = e.clientY;
+    const deltaY = e.clientY - dragState.startY;
+    const container = containerRefs.current[dragState.type];
+    if (!container) return;
 
-      // Determine which index the pointer is currently "targeting"
-      let targetIndex = activeDragIndex;
+    const children = Array.from(container.children) as HTMLElement[];
+    const itemHeight = children[0]?.offsetHeight || 60;
+    const gap = 12; // space-y-3 is 0.75rem = 12px
+    const fullStep = itemHeight + gap;
+
+    // Calculate how many steps we've moved
+    const stepsMoved = Math.round(deltaY / fullStep);
+    const newTargetIndex = Math.max(0, Math.min(dragState.initialCategories.length - 1, dragState.index + stepsMoved));
+
+    // Update the visual current Y for translation
+    setDragState(prev => prev ? ({ ...prev, currentY: e.clientY }) : null);
+
+    // If the logical index has changed, perform the swap in the background
+    if (newTargetIndex !== -1 && newTargetIndex !== undefined) {
+      const currentOrder = settings[`${dragState.type as 'income' | 'expense' | 'investment'}Categories`];
+      // We only reorder if the target has actually changed from where the item is CURRENTLY in the state
+      const currentIndexInState = currentOrder.indexOf(dragState.initialCategories[dragState.index]);
       
-      for (let i = 0; i < children.length; i++) {
-          const rect = children[i].getBoundingClientRect();
-          const threshold = rect.top + rect.height / 2;
-          
-          if (pointerY > rect.top && pointerY < rect.bottom) {
-              targetIndex = i;
-              break;
-          }
+      if (currentIndexInState !== newTargetIndex) {
+          const newCategories = [...currentOrder];
+          const [movedItem] = newCategories.splice(currentIndexInState, 1);
+          newCategories.splice(newTargetIndex, 0, movedItem);
+          onReorderCategories(dragState.type as any, newCategories);
       }
+    }
+  };
 
-      if (targetIndex !== activeDragIndex) {
-          const newCategories = [...categories];
-          const movedItem = newCategories.splice(activeDragIndex, 1)[0];
-          newCategories.splice(targetIndex, 0, movedItem);
-          
-          setActiveDragIndex(targetIndex);
-          onReorderCategories(type, newCategories);
-      }
+  const handlePointerUp = () => {
+    setDragState(null);
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', handlePointerUp);
+  };
+
+  const startDrag = (e: React.PointerEvent, index: number, type: string, categories: string[]) => {
+    // Crucial for iOS: prevent magnification and other default behaviors
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+
+    setDragState({
+      index,
+      type,
+      startY: e.clientY,
+      currentY: e.clientY,
+      initialCategories: [...categories]
+    });
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
   };
 
   const renderCategoryManager = (
@@ -89,59 +124,58 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
       setNewCatValue('');
     };
 
-    const isDraggingSection = dragType === type;
+    const isDraggingSection = dragState?.type === type;
 
     return (
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6">
-        <h3 className="font-bold text-lg mb-5 text-gray-800 flex justify-between items-center select-none">
+      <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-6 transition-all duration-300">
+        <h3 className="font-bold text-lg mb-5 text-gray-800 flex justify-between items-center select-none px-1">
             {title}
-            <span className="text-[10px] uppercase text-gray-400 tracking-wider font-bold bg-gray-50 px-2 py-1 rounded-md border border-gray-100">
+            <span className="text-[10px] uppercase text-gray-400 tracking-widest font-black bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
                 {categories.length} Total
             </span>
         </h3>
         
         <div 
-            className={`space-y-3 mb-6 relative transition-colors ${isDraggingSection ? 'cursor-grabbing' : ''}`}
-            onPointerMove={(e) => handlePointerMove(e, type, categories)}
-            onPointerUp={() => { setActiveDragIndex(null); setDragType(null); }}
-            onPointerLeave={() => { setActiveDragIndex(null); setDragType(null); }}
+            ref={el => containerRefs.current[type] = el}
+            className="space-y-3 mb-6 relative"
         >
           {categories.map((cat, index) => {
             const isBeingEdited = editing?.name === cat && editing?.type === type;
-            const isDraggingItem = activeDragIndex === index && dragType === type;
+            const isActiveItem = isDraggingSection && dragState.initialCategories[dragState.index] === cat;
+            
+            // Calculate visual translation for the active item
+            let transformStyle = '';
+            if (isActiveItem) {
+                const offset = dragState.currentY - dragState.startY;
+                transformStyle = `translateY(${offset}px)`;
+            }
 
             return (
               <div 
                 key={cat} 
-                className={`flex justify-between items-center border rounded-xl transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] 
-                  ${isDraggingItem 
-                    ? 'bg-blue-50 border-blue-300 shadow-2xl scale-[1.05] z-50 ring-4 ring-blue-500/10' 
+                className={`flex justify-between items-center border rounded-2xl transition-all duration-200 
+                  ${isActiveItem 
+                    ? 'bg-blue-50 border-blue-400 shadow-2xl z-50 scale-[1.05] ring-8 ring-blue-500/5 cursor-grabbing' 
                     : isDraggingSection 
-                        ? 'bg-gray-50/50 border-gray-100 opacity-90' 
+                        ? 'bg-gray-50/40 border-gray-100 opacity-60 scale-[0.98]' 
                         : 'bg-gray-50 border-gray-100'
                   } 
                   ${isBeingEdited ? 'ring-2 ring-blue-500 bg-white border-blue-200 z-10' : ''}
-                  select-none
+                  select-none touch-none
                 `}
                 style={{ 
-                    // Prevent default long-press behaviors and text selection on iOS
+                    transform: transformStyle,
+                    transition: isActiveItem ? 'none' : 'transform 0.2s cubic-bezier(0.2, 0, 0, 1), background-color 0.2s, opacity 0.2s, scale 0.2s',
                     WebkitUserSelect: 'none',
-                    WebkitTouchCallout: 'none',
-                    touchAction: isDraggingSection ? 'none' : 'pan-y'
+                    WebkitTouchCallout: 'none'
                 }}
               >
-                {/* Fixed Drag Handle - Strictly for reordering */}
+                {/* Dedicated Drag Handle */}
                 <div 
-                    className={`w-14 h-14 flex items-center justify-center transition-colors shrink-0 
-                        ${isDraggingItem ? 'text-blue-600' : 'text-gray-300 active:text-gray-600'}
+                    className={`w-14 h-14 flex items-center justify-center transition-colors shrink-0 cursor-grab active:cursor-grabbing
+                        ${isActiveItem ? 'text-blue-600' : 'text-gray-300 active:text-gray-600'}
                     `}
-                    style={{ touchAction: 'none' }}
-                    onPointerDown={(e) => {
-                        // Crucial for iOS: prevents the system from taking control of the pointer
-                        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-                        setActiveDragIndex(index);
-                        setDragType(type);
-                    }}
+                    onPointerDown={(e) => startDrag(e, index, type, categories)}
                 >
                   <svg className="w-6 h-6 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 8h16M4 16h16" />
@@ -154,7 +188,7 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
                       type="text"
                       value={editingText}
                       onChange={(e) => setEditingText(e.target.value)}
-                      className="w-full p-2 bg-white border border-blue-200 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      className="w-full p-2 bg-white border border-blue-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-blue-100"
                       autoFocus
                       onKeyDown={(e) => {
                           if (e.key === 'Enter') handleSaveEdit(type, cat);
@@ -162,7 +196,7 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
                       }}
                     />
                   ) : (
-                    <span className={`text-sm font-bold truncate block transition-colors ${isDraggingItem ? 'text-blue-700' : 'text-gray-700'}`}>
+                    <span className={`text-sm font-bold truncate block transition-colors ${isActiveItem ? 'text-blue-700' : 'text-gray-700'}`}>
                         {cat}
                     </span>
                   )}
@@ -171,9 +205,8 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
                 <div className="flex items-center shrink-0">
                   {isBeingEdited ? (
                     <button 
-                        onMouseDown={() => handleSaveEdit(type, cat)} 
-                        className="w-14 h-14 flex items-center justify-center text-green-600 active:bg-green-50 rounded-r-xl transition-colors"
-                        aria-label="Save changes"
+                        onPointerDown={(e) => { e.stopPropagation(); handleSaveEdit(type, cat); }} 
+                        className="w-14 h-14 flex items-center justify-center text-green-600 active:bg-green-50 rounded-r-2xl transition-colors"
                     >
                         <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -182,24 +215,22 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
                   ) : (
                     <>
                       <button 
-                        onClick={() => handleEditClick(type, cat)} 
-                        className={`w-14 h-14 flex items-center justify-center transition-colors hover:text-blue-600 active:bg-blue-50 ${isDraggingItem ? 'text-blue-300' : 'text-gray-400'}`}
-                        aria-label={`Edit ${cat}`}
+                        onPointerDown={(e) => { e.stopPropagation(); handleEditClick(type, cat); }} 
+                        className={`w-14 h-14 flex items-center justify-center transition-colors hover:text-blue-600 active:bg-blue-50 ${isDraggingSection ? 'pointer-events-none text-gray-200' : 'text-gray-400'}`}
                         disabled={isDraggingSection}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />
                         </svg>
                       </button>
                       
                       <button
-                        onClick={() => onDeleteCategory(type, cat)}
-                        className={`w-14 h-14 flex items-center justify-center rounded-r-xl transition-colors active:bg-red-50 active:scale-90 ${isDraggingItem ? 'text-red-300' : 'text-red-500'}`}
-                        aria-label={`Delete ${cat}`}
+                        onPointerDown={(e) => { e.stopPropagation(); onDeleteCategory(type, cat); }}
+                        className={`w-14 h-14 flex items-center justify-center rounded-r-2xl transition-colors active:bg-red-50 active:scale-90 ${isDraggingSection ? 'pointer-events-none text-gray-200' : 'text-red-500'}`}
                         disabled={isDraggingSection}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.6} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                       </button>
                     </>
@@ -216,12 +247,12 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
             value={newCatValue}
             onChange={e => setNewCatValue(e.target.value)}
             placeholder={`New ${title} Name...`}
-            className="flex-grow p-4 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            className="flex-grow p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:bg-white transition-all"
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
           />
           <button 
             onClick={handleAdd} 
-            className="bg-blue-600 text-white font-bold px-6 py-4 rounded-xl hover:bg-blue-700 active:scale-95 transition-all shadow-md shadow-blue-500/20"
+            className="bg-blue-600 text-white font-black px-6 py-4 rounded-2xl hover:bg-blue-700 active:scale-95 transition-all shadow-xl shadow-blue-600/20"
           >
               Add
           </button>
@@ -233,9 +264,9 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
   return (
     <div className="space-y-2 pb-24">
       <div className="flex items-center mb-6 px-1 select-none">
-          <button onClick={onBack} className="flex items-center text-sm font-bold text-gray-500 hover:text-gray-800 bg-gray-100 px-4 py-2.5 rounded-full transition-colors active:scale-95">
-             <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+          <button onClick={onBack} className="flex items-center text-sm font-black text-gray-500 hover:text-gray-800 bg-gray-100 px-5 py-3 rounded-full transition-all active:scale-95 shadow-sm">
+             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" />
              </svg>
              Settings
           </button>

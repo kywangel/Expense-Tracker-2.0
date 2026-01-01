@@ -180,7 +180,7 @@ const App: React.FC = () => {
   };
 
   const handleDeleteCategory = (type: 'income' | 'expense' | 'investment', categoryToDelete: string) => {
-    // Reassign transactions to "Others" and update their notes
+    // Reassign transactions to "Others" and update their notes to keep context
     setTransactions(prev => prev.map(t => {
       if (t.category === categoryToDelete) {
         return {
@@ -199,7 +199,7 @@ const App: React.FC = () => {
         dailyViewCategories: prev.dailyViewCategories.filter(c => c !== categoryToDelete) 
     }));
     
-    showNotification(`Deleted "${categoryToDelete}". Transactions moved to "Others".`);
+    showNotification(`Deleted "${categoryToDelete}". Items moved to "Others".`);
   };
 
   const handleEditCategory = (
