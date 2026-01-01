@@ -23,8 +23,9 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
   const [editing, setEditing] = useState<{ type: string; name: string } | null>(null);
   const [editingText, setEditingText] = useState('');
 
-  const dragItemIndex = useRef<number | null>(null);
-  const dragOverItemIndex = useRef<number | null>(null);
+  // Mobile-safe drag state
+  const [activeDragIndex, setActiveDragIndex] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const handleEditClick = (type: string, name: string) => {
     setEditing({ type, name });
@@ -41,22 +42,35 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
     setEditingText('');
   };
 
-  // Reordering logic
-  const handleSort = (type: 'income' | 'expense' | 'investment', categories: string[]) => {
-      if (dragItemIndex.current === null || dragOverItemIndex.current === null || dragItemIndex.current === dragOverItemIndex.current) {
-          dragItemIndex.current = null;
-          dragOverItemIndex.current = null;
-          return;
+  /**
+   * Robust Mobile Reordering Logic
+   * Tracks pointer Y position to determine swap targets
+   */
+  const handlePointerMove = (e: React.PointerEvent, type: 'income' | 'expense' | 'investment', categories: string[]) => {
+      if (activeDragIndex === null) return;
+
+      const container = e.currentTarget as HTMLElement;
+      const children = Array.from(container.children);
+      const pointerY = e.clientY;
+
+      // Find which element the pointer is currently over
+      let targetIndex = activeDragIndex;
+      children.forEach((child, idx) => {
+          const rect = child.getBoundingClientRect();
+          const middle = rect.top + rect.height / 2;
+          if (pointerY > rect.top && pointerY < rect.bottom) {
+              targetIndex = idx;
+          }
+      });
+
+      if (targetIndex !== activeDragIndex) {
+          const newCategories = [...categories];
+          const movedItem = newCategories.splice(activeDragIndex, 1)[0];
+          newCategories.splice(targetIndex, 0, movedItem);
+          
+          setActiveDragIndex(targetIndex);
+          onReorderCategories(type, newCategories);
       }
-      
-      const newCategories = [...categories];
-      const draggedItemContent = newCategories.splice(dragItemIndex.current, 1)[0];
-      newCategories.splice(dragOverItemIndex.current, 0, draggedItemContent);
-      
-      dragItemIndex.current = null;
-      dragOverItemIndex.current = null;
-      
-      onReorderCategories(type, newCategories);
   };
 
   const renderCategoryManager = (
@@ -81,33 +95,31 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
             </span>
         </h3>
         
-        <div className="space-y-3 mb-6">
+        <div 
+            className="space-y-3 mb-6 touch-none"
+            onPointerMove={(e) => handlePointerMove(e, type, categories)}
+            onPointerUp={() => setActiveDragIndex(null)}
+            onPointerLeave={() => setActiveDragIndex(null)}
+        >
           {categories.map((cat, index) => {
             const isBeingEdited = editing?.name === cat && editing?.type === type;
+            const isDragging = activeDragIndex === index;
 
             return (
               <div 
                 key={cat} 
-                className={`flex justify-between items-center bg-gray-50 border border-gray-100 rounded-xl transition-all ${isBeingEdited ? 'ring-2 ring-blue-500 bg-white shadow-lg z-10' : ''}`}
-                draggable
-                onDragStart={() => dragItemIndex.current = index}
-                onDragEnter={() => dragOverItemIndex.current = index}
-                onDragEnd={() => handleSort(type, categories)}
-                onDragOver={(e) => e.preventDefault()}
+                className={`flex justify-between items-center bg-gray-50 border border-gray-100 rounded-xl transition-all ${isBeingEdited ? 'ring-2 ring-blue-500 bg-white' : ''} ${isDragging ? 'opacity-50 scale-[1.02] shadow-lg border-blue-200' : ''}`}
               >
-                {/* Drag Handle - Optimized for Touch with onPointerDown/Up */}
+                {/* Custom Drag Handle - Explicitly captures pointer for iOS stability */}
                 <div 
-                    className="w-14 h-14 flex items-center justify-center text-gray-300 cursor-grab active:cursor-grabbing hover:text-gray-500 shrink-0"
+                    className="w-14 h-14 flex items-center justify-center text-gray-300 cursor-grab active:cursor-grabbing hover:text-gray-500 shrink-0 select-none"
                     style={{ touchAction: 'none' }}
-                    onPointerDown={() => dragItemIndex.current = index}
-                    onPointerOver={() => {
-                        if (dragItemIndex.current !== null) {
-                            dragOverItemIndex.current = index;
-                        }
+                    onPointerDown={(e) => {
+                        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+                        setActiveDragIndex(index);
                     }}
-                    onPointerUp={() => handleSort(type, categories)}
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 8h16M4 16h16" />
                   </svg>
                 </div>
