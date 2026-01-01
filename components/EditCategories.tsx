@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { AppSettings, Transaction } from '../types';
 
 interface EditCategoriesProps {
@@ -14,10 +14,9 @@ interface EditCategoriesProps {
 
 interface DragState {
   index: number;
-  type: string;
+  type: 'income' | 'expense' | 'investment';
   startY: number;
   currentY: number;
-  initialCategories: string[];
 }
 
 const EditCategories: React.FC<EditCategoriesProps> = ({ 
@@ -31,9 +30,13 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
   const [editing, setEditing] = useState<{ type: string; name: string } | null>(null);
   const [editingText, setEditingText] = useState('');
 
-  // Enhanced Drag State
+  // Drag state for physics-based movement
   const [dragState, setDragState] = useState<DragState | null>(null);
-  const containerRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const containerRefs = useRef<Record<string, HTMLDivElement | null>>({
+    income: null,
+    expense: null,
+    investment: null
+  });
 
   const handleEditClick = (type: string, name: string) => {
     setEditing({ type, name });
@@ -51,64 +54,79 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
   };
 
   /**
-   * Fluid Pointer Move Logic
-   * Updates coordinates for visual translation and triggers logical swaps when crossing thresholds.
+   * Pointer Move Logic
+   * Tracks movement and calculates when to swap items
    */
-  const handlePointerMove = (e: PointerEvent) => {
+  const onPointerMove = (e: PointerEvent) => {
     if (!dragState) return;
 
-    const deltaY = e.clientY - dragState.startY;
+    // Update current visual position
+    setDragState(prev => prev ? ({ ...prev, currentY: e.clientY }) : null);
+
+    const typeKey = `${dragState.type}Categories` as keyof AppSettings;
+    const currentCategories = settings[typeKey] as string[];
     const container = containerRefs.current[dragState.type];
+    
     if (!container) return;
 
     const children = Array.from(container.children) as HTMLElement[];
-    const itemHeight = children[0]?.offsetHeight || 60;
-    const gap = 12; // space-y-3 is 0.75rem = 12px
-    const fullStep = itemHeight + gap;
+    if (children.length < 2) return;
 
-    // Calculate how many steps we've moved
-    const stepsMoved = Math.round(deltaY / fullStep);
-    const newTargetIndex = Math.max(0, Math.min(dragState.initialCategories.length - 1, dragState.index + stepsMoved));
+    const itemHeight = children[0].offsetHeight;
+    const gap = 12; // matching space-y-3 (0.75rem)
+    const step = itemHeight + gap;
+    
+    const deltaY = e.clientY - dragState.startY;
+    const indexShift = Math.round(deltaY / step);
+    const targetIndex = Math.max(0, Math.min(currentCategories.length - 1, dragState.index + indexShift));
 
-    // Update the visual current Y for translation
-    setDragState(prev => prev ? ({ ...prev, currentY: e.clientY }) : null);
+    // Determine if we need to logically swap items
+    // We check the actual current position in the live settings list
+    const currentIndexInList = currentCategories.indexOf(dragState.initialItemName || '');
+    // Using a ref or local closure isn't possible here easily without more state, 
+    // so we find the item by name from when the drag started.
+    // However, simplified: we track the index from the drag start and compare.
+    
+    // To make it simpler and more reliable for React's render loop:
+    const draggedItemName = dragState.initialItemName;
+    const realCurrentIndex = currentCategories.indexOf(draggedItemName);
 
-    // If the logical index has changed, perform the swap in the background
-    if (newTargetIndex !== -1 && newTargetIndex !== undefined) {
-      const currentOrder = settings[`${dragState.type as 'income' | 'expense' | 'investment'}Categories`];
-      // We only reorder if the target has actually changed from where the item is CURRENTLY in the state
-      const currentIndexInState = currentOrder.indexOf(dragState.initialCategories[dragState.index]);
-      
-      if (currentIndexInState !== newTargetIndex) {
-          const newCategories = [...currentOrder];
-          const [movedItem] = newCategories.splice(currentIndexInState, 1);
-          newCategories.splice(newTargetIndex, 0, movedItem);
-          onReorderCategories(dragState.type as any, newCategories);
-      }
+    if (realCurrentIndex !== -1 && realCurrentIndex !== targetIndex) {
+        const newCategories = [...currentCategories];
+        const [movedItem] = newCategories.splice(realCurrentIndex, 1);
+        newCategories.splice(targetIndex, 0, movedItem);
+        onReorderCategories(dragState.type, newCategories);
     }
   };
 
-  const handlePointerUp = () => {
+  const onPointerUp = () => {
     setDragState(null);
-    window.removeEventListener('pointermove', handlePointerMove);
-    window.removeEventListener('pointerup', handlePointerUp);
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
   };
 
-  const startDrag = (e: React.PointerEvent, index: number, type: string, categories: string[]) => {
-    // Crucial for iOS: prevent magnification and other default behaviors
-    const handle = e.currentTarget as HTMLElement;
-    handle.setPointerCapture(e.pointerId);
+  // Extension to DragState to track the item name so we can find it after swaps
+  interface ExtendedDragState extends DragState {
+      initialItemName: string;
+  }
 
-    setDragState({
-      index,
-      type,
-      startY: e.clientY,
-      currentY: e.clientY,
-      initialCategories: [...categories]
-    });
+  const startDrag = (e: React.PointerEvent, index: number, type: 'income' | 'expense' | 'investment', name: string) => {
+    // Lock pointer to handle to ensure we don't lose it on fast moves
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
 
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
+    const newDragState: ExtendedDragState = {
+        index,
+        type,
+        startY: e.clientY,
+        currentY: e.clientY,
+        initialItemName: name
+    };
+
+    setDragState(newDragState as any);
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
   };
 
   const renderCategoryManager = (
@@ -124,16 +142,16 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
       setNewCatValue('');
     };
 
-    const isDraggingSection = dragState?.type === type;
+    const isThisSectionDragging = dragState?.type === type;
 
     return (
-      <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-6 transition-all duration-300">
-        <h3 className="font-bold text-lg mb-5 text-gray-800 flex justify-between items-center select-none px-1">
-            {title}
-            <span className="text-[10px] uppercase text-gray-400 tracking-widest font-black bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
-                {categories.length} Total
+      <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 mb-6 transition-all duration-300">
+        <div className="flex justify-between items-center mb-5 px-1 select-none">
+            <h3 className="font-black text-lg text-gray-800 tracking-tight">{title}</h3>
+            <span className="text-[10px] uppercase text-gray-400 tracking-widest font-black bg-gray-50 px-2.5 py-1.5 rounded-xl border border-gray-100">
+                {categories.length} Items
             </span>
-        </h3>
+        </div>
         
         <div 
             ref={el => containerRefs.current[type] = el}
@@ -141,11 +159,11 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
         >
           {categories.map((cat, index) => {
             const isBeingEdited = editing?.name === cat && editing?.type === type;
-            const isActiveItem = isDraggingSection && dragState.initialCategories[dragState.index] === cat;
+            const isDraggedItem = isThisSectionDragging && (dragState as any).initialItemName === cat;
             
-            // Calculate visual translation for the active item
+            // Calculate real-time translation for the item under the finger
             let transformStyle = '';
-            if (isActiveItem) {
+            if (isDraggedItem && dragState) {
                 const offset = dragState.currentY - dragState.startY;
                 transformStyle = `translateY(${offset}px)`;
             }
@@ -153,29 +171,29 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
             return (
               <div 
                 key={cat} 
-                className={`flex justify-between items-center border rounded-2xl transition-all duration-200 
-                  ${isActiveItem 
+                className={`flex justify-between items-center border rounded-2xl transition-all duration-200
+                  ${isDraggedItem 
                     ? 'bg-blue-50 border-blue-400 shadow-2xl z-50 scale-[1.05] ring-8 ring-blue-500/5 cursor-grabbing' 
-                    : isDraggingSection 
-                        ? 'bg-gray-50/40 border-gray-100 opacity-60 scale-[0.98]' 
+                    : isThisSectionDragging 
+                        ? 'bg-gray-50/40 border-gray-100 opacity-40 scale-[0.97]' 
                         : 'bg-gray-50 border-gray-100'
                   } 
-                  ${isBeingEdited ? 'ring-2 ring-blue-500 bg-white border-blue-200 z-10' : ''}
+                  ${isBeingEdited ? 'ring-4 ring-blue-500/10 bg-white border-blue-300 z-10' : ''}
                   select-none touch-none
                 `}
                 style={{ 
                     transform: transformStyle,
-                    transition: isActiveItem ? 'none' : 'transform 0.2s cubic-bezier(0.2, 0, 0, 1), background-color 0.2s, opacity 0.2s, scale 0.2s',
+                    transition: isDraggedItem ? 'none' : 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), background-color 0.2s, opacity 0.2s, scale 0.2s',
                     WebkitUserSelect: 'none',
                     WebkitTouchCallout: 'none'
                 }}
               >
-                {/* Dedicated Drag Handle */}
+                {/* Visual Drag Handle */}
                 <div 
                     className={`w-14 h-14 flex items-center justify-center transition-colors shrink-0 cursor-grab active:cursor-grabbing
-                        ${isActiveItem ? 'text-blue-600' : 'text-gray-300 active:text-gray-600'}
+                        ${isDraggedItem ? 'text-blue-600' : 'text-gray-300 active:text-gray-600'}
                     `}
-                    onPointerDown={(e) => startDrag(e, index, type, categories)}
+                    onPointerDown={(e) => startDrag(e, index, type, cat)}
                 >
                   <svg className="w-6 h-6 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 8h16M4 16h16" />
@@ -196,7 +214,7 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
                       }}
                     />
                   ) : (
-                    <span className={`text-sm font-bold truncate block transition-colors ${isActiveItem ? 'text-blue-700' : 'text-gray-700'}`}>
+                    <span className={`text-sm font-bold truncate block transition-colors ${isDraggedItem ? 'text-blue-700' : 'text-gray-700'}`}>
                         {cat}
                     </span>
                   )}
@@ -216,8 +234,8 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
                     <>
                       <button 
                         onPointerDown={(e) => { e.stopPropagation(); handleEditClick(type, cat); }} 
-                        className={`w-14 h-14 flex items-center justify-center transition-colors hover:text-blue-600 active:bg-blue-50 ${isDraggingSection ? 'pointer-events-none text-gray-200' : 'text-gray-400'}`}
-                        disabled={isDraggingSection}
+                        className={`w-14 h-14 flex items-center justify-center transition-colors hover:text-blue-600 active:bg-blue-50 ${isThisSectionDragging ? 'pointer-events-none text-gray-200' : 'text-gray-400'}`}
+                        disabled={isThisSectionDragging}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />
@@ -226,8 +244,8 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
                       
                       <button
                         onPointerDown={(e) => { e.stopPropagation(); onDeleteCategory(type, cat); }}
-                        className={`w-14 h-14 flex items-center justify-center rounded-r-2xl transition-colors active:bg-red-50 active:scale-90 ${isDraggingSection ? 'pointer-events-none text-gray-200' : 'text-red-500'}`}
-                        disabled={isDraggingSection}
+                        className={`w-14 h-14 flex items-center justify-center rounded-r-2xl transition-colors active:bg-red-50 active:scale-90 ${isThisSectionDragging ? 'pointer-events-none text-gray-200' : 'text-red-500'}`}
+                        disabled={isThisSectionDragging}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -241,12 +259,12 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
           })}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           <input
             type="text"
             value={newCatValue}
             onChange={e => setNewCatValue(e.target.value)}
-            placeholder={`New ${title} Name...`}
+            placeholder={`Add to ${title}...`}
             className="flex-grow p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:bg-white transition-all"
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
           />
@@ -275,7 +293,7 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
       <div className="animate-fade-in-up">
         {renderCategoryManager('Income', 'income', settings.incomeCategories, newIncomeCat, setNewIncomeCat)}
         {renderCategoryManager('Expenses', 'expense', settings.expenseCategories, newExpenseCat, setNewExpenseCat)}
-        {renderCategoryManager('Investments / Savings', 'investment', settings.investmentCategories, newInvestmentCat, setNewInvestmentCat)}
+        {renderCategoryManager('Investments', 'investment', settings.investmentCategories, newInvestmentCat, setNewInvestmentCat)}
       </div>
     </div>
   );
