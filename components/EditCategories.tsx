@@ -23,10 +23,8 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
   const [editing, setEditing] = useState<{ type: string; name: string } | null>(null);
   const [editingText, setEditingText] = useState('');
 
-  const usedCategories = new Set(transactions.map(t => t.category));
-
-  const dragItem = useRef<number | null>(null);
-  const dragOverItem = useRef<number | null>(null);
+  const dragItemIndex = useRef<number | null>(null);
+  const dragOverItemIndex = useRef<number | null>(null);
 
   const handleEditClick = (type: string, name: string) => {
     setEditing({ type, name });
@@ -43,19 +41,20 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
     setEditingText('');
   };
 
-  const handleDragSort = (type: 'income' | 'expense' | 'investment', categories: string[]) => {
-      if (dragItem.current === null || dragOverItem.current === null || dragItem.current === dragOverItem.current) {
-          dragItem.current = null;
-          dragOverItem.current = null;
+  // Reordering logic
+  const handleSort = (type: 'income' | 'expense' | 'investment', categories: string[]) => {
+      if (dragItemIndex.current === null || dragOverItemIndex.current === null || dragItemIndex.current === dragOverItemIndex.current) {
+          dragItemIndex.current = null;
+          dragOverItemIndex.current = null;
           return;
       }
       
       const newCategories = [...categories];
-      const draggedItemContent = newCategories.splice(dragItem.current, 1)[0];
-      newCategories.splice(dragOverItem.current, 0, draggedItemContent);
+      const draggedItemContent = newCategories.splice(dragItemIndex.current, 1)[0];
+      newCategories.splice(dragOverItemIndex.current, 0, draggedItemContent);
       
-      dragItem.current = null;
-      dragOverItem.current = null;
+      dragItemIndex.current = null;
+      dragOverItemIndex.current = null;
       
       onReorderCategories(type, newCategories);
   };
@@ -85,22 +84,28 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
         <div className="space-y-3 mb-6">
           {categories.map((cat, index) => {
             const isBeingEdited = editing?.name === cat && editing?.type === type;
-            const isUsed = usedCategories.has(cat);
 
             return (
               <div 
                 key={cat} 
-                className={`flex justify-between items-center bg-gray-50 border border-gray-100 rounded-xl transition-all ${isBeingEdited ? 'ring-2 ring-blue-500 bg-white' : ''}`}
+                className={`flex justify-between items-center bg-gray-50 border border-gray-100 rounded-xl transition-all ${isBeingEdited ? 'ring-2 ring-blue-500 bg-white shadow-lg z-10' : ''}`}
                 draggable
-                onDragStart={() => dragItem.current = index}
-                onDragEnter={() => dragOverItem.current = index}
-                onDragEnd={() => handleDragSort(type, categories)}
+                onDragStart={() => dragItemIndex.current = index}
+                onDragEnter={() => dragOverItemIndex.current = index}
+                onDragEnd={() => handleSort(type, categories)}
                 onDragOver={(e) => e.preventDefault()}
               >
-                {/* Drag Handle - Enlarged for touch, touch-action: none prevents scrolling while dragging */}
+                {/* Drag Handle - Optimized for Touch with onPointerDown/Up */}
                 <div 
-                    className="w-12 h-14 flex items-center justify-center text-gray-300 cursor-grab active:cursor-grabbing hover:text-gray-400 shrink-0"
+                    className="w-14 h-14 flex items-center justify-center text-gray-300 cursor-grab active:cursor-grabbing hover:text-gray-500 shrink-0"
                     style={{ touchAction: 'none' }}
+                    onPointerDown={() => dragItemIndex.current = index}
+                    onPointerOver={() => {
+                        if (dragItemIndex.current !== null) {
+                            dragOverItemIndex.current = index;
+                        }
+                    }}
+                    onPointerUp={() => handleSort(type, categories)}
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 8h16M4 16h16" />
@@ -129,7 +134,7 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
                   {isBeingEdited ? (
                     <button 
                         onMouseDown={() => handleSaveEdit(type, cat)} 
-                        className="w-12 h-14 flex items-center justify-center text-green-600 active:bg-green-50 rounded-r-xl transition-colors"
+                        className="w-14 h-14 flex items-center justify-center text-green-600 active:bg-green-50 rounded-r-xl transition-colors"
                         aria-label="Save changes"
                     >
                         <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
@@ -140,7 +145,7 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
                     <>
                       <button 
                         onClick={() => handleEditClick(type, cat)} 
-                        className="w-12 h-14 flex items-center justify-center text-gray-400 hover:text-blue-600 active:bg-blue-50 transition-colors"
+                        className="w-14 h-14 flex items-center justify-center text-gray-400 hover:text-blue-600 active:bg-blue-50 transition-colors"
                         aria-label={`Edit ${cat}`}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -150,9 +155,7 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
                       
                       <button
                         onClick={() => onDeleteCategory(type, cat)}
-                        disabled={isUsed}
-                        className={`w-12 h-14 flex items-center justify-center rounded-r-xl transition-colors ${isUsed ? 'text-gray-200 cursor-not-allowed' : 'text-red-500 active:bg-red-50'}`}
-                        title={isUsed ? "Cannot delete category in use" : "Delete category"}
+                        className="w-14 h-14 flex items-center justify-center rounded-r-xl transition-colors text-red-500 active:bg-red-50 active:scale-95"
                         aria-label={`Delete ${cat}`}
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -189,8 +192,8 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
 
   return (
     <div className="space-y-2 pb-24">
-      <div className="flex items-center mb-6">
-          <button onClick={onBack} className="flex items-center text-sm font-bold text-gray-500 hover:text-gray-800 bg-gray-100 px-4 py-2 rounded-full transition-colors">
+      <div className="flex items-center mb-6 px-1">
+          <button onClick={onBack} className="flex items-center text-sm font-bold text-gray-500 hover:text-gray-800 bg-gray-100 px-4 py-2.5 rounded-full transition-colors active:scale-95">
              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
              </svg>

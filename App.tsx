@@ -17,7 +17,6 @@ import { format } from 'date-fns';
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.DASHBOARD);
   
-  // Robust initial state loading with error handling
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
       const saved = localStorage.getItem('appSettings');
@@ -37,7 +36,6 @@ const App: React.FC = () => {
 
       if (saved) {
           const parsed = JSON.parse(saved);
-          // Migration logic
           if (parsed.categoryBudgets && !parsed.monthlyCategoryBudgets) {
               const currentMonthKey = toHKDateString(new Date()).substring(0, 7);
               parsed.monthlyCategoryBudgets = { [currentMonthKey]: parsed.categoryBudgets };
@@ -46,8 +44,6 @@ const App: React.FC = () => {
               const currentMonthKey = toHKDateString(new Date()).substring(0, 7);
               parsed.baseCategoryBudgets = parsed.monthlyCategoryBudgets?.[currentMonthKey] || {};
           }
-
-          // Ensure all new fields exist
           return {
             ...defaults,
             ...parsed,
@@ -109,7 +105,6 @@ const App: React.FC = () => {
     return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions]);
 
-  // Unified persistence with Quota Check
   const safeSave = (key: string, data: any) => {
     try {
       localStorage.setItem(key, JSON.stringify(data));
@@ -185,18 +180,26 @@ const App: React.FC = () => {
   };
 
   const handleDeleteCategory = (type: 'income' | 'expense' | 'investment', categoryToDelete: string) => {
-    const isUsed = transactions.some(t => t.category === categoryToDelete);
-    if (isUsed) {
-      showNotification(`Cannot delete "${categoryToDelete}" as it's in use.`);
-      return;
-    }
+    // Reassign transactions to "Others" and update their notes
+    setTransactions(prev => prev.map(t => {
+      if (t.category === categoryToDelete) {
+        return {
+          ...t,
+          category: "Others",
+          note: `[${categoryToDelete}] ${t.note || ''}`.trim()
+        };
+      }
+      return t;
+    }));
+
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
     setSettings(prev => ({ 
         ...prev, 
         [key]: prev[key].filter(c => c !== categoryToDelete),
         dailyViewCategories: prev.dailyViewCategories.filter(c => c !== categoryToDelete) 
     }));
-    showNotification(`Deleted category: ${categoryToDelete}`);
+    
+    showNotification(`Deleted "${categoryToDelete}". Transactions moved to "Others".`);
   };
 
   const handleEditCategory = (
@@ -230,7 +233,6 @@ const App: React.FC = () => {
         prev.map(t => t.category === oldName ? { ...t, category: newName.trim() } : t)
     );
     
-    // Update budgets
     const newMonthlyBudgets = { ...settings.monthlyCategoryBudgets };
     Object.keys(newMonthlyBudgets).forEach(monthKey => {
       if (newMonthlyBudgets[monthKey][oldName]) {
