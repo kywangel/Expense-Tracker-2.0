@@ -34,13 +34,21 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
   };
 
   const handleSaveEdit = (type: 'income' | 'expense' | 'investment', oldName: string) => {
-    onEditCategory(type, oldName, editingText);
+    if (!editingText.trim()) {
+        setEditing(null);
+        return;
+    }
+    onEditCategory(type, oldName, editingText.trim());
     setEditing(null);
     setEditingText('');
   };
 
   const handleDragSort = (type: 'income' | 'expense' | 'investment', categories: string[]) => {
-      if (dragItem.current === null || dragOverItem.current === null) return;
+      if (dragItem.current === null || dragOverItem.current === null || dragItem.current === dragOverItem.current) {
+          dragItem.current = null;
+          dragOverItem.current = null;
+          return;
+      }
       
       const newCategories = [...categories];
       const draggedItemContent = newCategories.splice(dragItem.current, 1)[0];
@@ -60,89 +68,141 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
     setNewCatValue: (val: string) => void
   ) => {
     const handleAdd = () => {
-      onAddCategory(type, newCatValue);
+      if (!newCatValue.trim()) return;
+      onAddCategory(type, newCatValue.trim());
       setNewCatValue('');
     };
 
     return (
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-        <h3 className="font-bold text-lg mb-4 text-gray-800">{title}</h3>
-        <div className="space-y-2 mb-4">
-          {categories.map((cat, index) => (
-            <div 
-              key={cat} 
-              className="flex justify-between items-center bg-gray-50 p-2 rounded-lg group"
-              draggable
-              onDragStart={() => dragItem.current = index}
-              onDragEnter={() => dragOverItem.current = index}
-              onDragEnd={() => handleDragSort(type, categories)}
-              onDragOver={(e) => e.preventDefault()}
-            >
-              <div className="flex items-center space-x-3 flex-grow min-w-0">
-                <svg className="w-5 h-5 text-gray-400 cursor-grab flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6">
+        <h3 className="font-bold text-lg mb-5 text-gray-800 flex justify-between items-center">
+            {title}
+            <span className="text-[10px] uppercase text-gray-400 tracking-wider font-bold bg-gray-50 px-2 py-1 rounded-md border border-gray-100">
+                {categories.length} Total
+            </span>
+        </h3>
+        
+        <div className="space-y-3 mb-6">
+          {categories.map((cat, index) => {
+            const isBeingEdited = editing?.name === cat && editing?.type === type;
+            const isUsed = usedCategories.has(cat);
 
-                {editing?.name === cat && editing?.type === type ? (
-                  <input
-                    type="text"
-                    value={editingText}
-                    onChange={(e) => setEditingText(e.target.value)}
-                    className="flex-grow p-1 bg-white border border-blue-500 rounded text-sm focus:outline-none min-w-0"
-                    autoFocus
-                    onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(type, cat)}
-                    onBlur={() => setEditing(null)}
-                  />
-                ) : (
-                  <span className="text-sm text-gray-700 truncate">{cat}</span>
-                )}
-              </div>
-              
-              <div className="flex items-center space-x-1 flex-shrink-0">
-                {editing?.name === cat && editing?.type === type ? (
-                  <>
-                    <button onMouseDown={() => handleSaveEdit(type, cat)} className="p-1 text-green-600 hover:bg-green-100 rounded-full"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg></button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => handleEditClick(type, cat)} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-100 rounded-full"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" /></svg></button>
-                    <button
-                      onClick={() => onDeleteCategory(type, cat)}
-                      disabled={usedCategories.has(cat)}
-                      className="text-red-500 p-1 rounded-full hover:bg-red-100 disabled:text-gray-300 disabled:cursor-not-allowed"
-                      title={usedCategories.has(cat) ? "Cannot delete category in use" : "Delete category"}
+            return (
+              <div 
+                key={cat} 
+                className={`flex justify-between items-center bg-gray-50 border border-gray-100 rounded-xl transition-all ${isBeingEdited ? 'ring-2 ring-blue-500 bg-white' : ''}`}
+                draggable
+                onDragStart={() => dragItem.current = index}
+                onDragEnter={() => dragOverItem.current = index}
+                onDragEnd={() => handleDragSort(type, categories)}
+                onDragOver={(e) => e.preventDefault()}
+              >
+                {/* Drag Handle - Enlarged for touch, touch-action: none prevents scrolling while dragging */}
+                <div 
+                    className="w-12 h-14 flex items-center justify-center text-gray-300 cursor-grab active:cursor-grabbing hover:text-gray-400 shrink-0"
+                    style={{ touchAction: 'none' }}
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 8h16M4 16h16" />
+                  </svg>
+                </div>
+
+                <div className="flex-grow min-w-0 py-3">
+                  {isBeingEdited ? (
+                    <input
+                      type="text"
+                      value={editingText}
+                      onChange={(e) => setEditingText(e.target.value)}
+                      className="w-full p-2 bg-white border border-blue-200 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      autoFocus
+                      onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveEdit(type, cat);
+                          if (e.key === 'Escape') setEditing(null);
+                      }}
+                    />
+                  ) : (
+                    <span className="text-sm font-bold text-gray-700 truncate block">{cat}</span>
+                  )}
+                </div>
+                
+                <div className="flex items-center shrink-0">
+                  {isBeingEdited ? (
+                    <button 
+                        onMouseDown={() => handleSaveEdit(type, cat)} 
+                        className="w-12 h-14 flex items-center justify-center text-green-600 active:bg-green-50 rounded-r-xl transition-colors"
+                        aria-label="Save changes"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
                     </button>
-                  </>
-                )}
+                  ) : (
+                    <>
+                      <button 
+                        onClick={() => handleEditClick(type, cat)} 
+                        className="w-12 h-14 flex items-center justify-center text-gray-400 hover:text-blue-600 active:bg-blue-50 transition-colors"
+                        aria-label={`Edit ${cat}`}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />
+                        </svg>
+                      </button>
+                      
+                      <button
+                        onClick={() => onDeleteCategory(type, cat)}
+                        disabled={isUsed}
+                        className={`w-12 h-14 flex items-center justify-center rounded-r-xl transition-colors ${isUsed ? 'text-gray-200 cursor-not-allowed' : 'text-red-500 active:bg-red-50'}`}
+                        title={isUsed ? "Cannot delete category in use" : "Delete category"}
+                        aria-label={`Delete ${cat}`}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-        <div className="flex space-x-2">
+
+        <div className="flex gap-2">
           <input
             type="text"
             value={newCatValue}
             onChange={e => setNewCatValue(e.target.value)}
-            placeholder={`New ${title} Category`}
-            className="flex-grow p-2 bg-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder={`New ${title} Name...`}
+            className="flex-grow p-4 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
           />
-          <button onClick={handleAdd} className="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg hover:bg-blue-700">Add</button>
+          <button 
+            onClick={handleAdd} 
+            className="bg-blue-600 text-white font-bold px-6 py-4 rounded-xl hover:bg-blue-700 active:scale-95 transition-all shadow-md shadow-blue-500/20"
+          >
+              Add
+          </button>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="space-y-6 pb-24">
-      <button onClick={onBack} className="flex items-center text-sm text-gray-500 hover:text-gray-800 mb-2">
-         <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-         Back to Settings
-      </button>
+    <div className="space-y-2 pb-24">
+      <div className="flex items-center mb-6">
+          <button onClick={onBack} className="flex items-center text-sm font-bold text-gray-500 hover:text-gray-800 bg-gray-100 px-4 py-2 rounded-full transition-colors">
+             <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+             </svg>
+             Settings
+          </button>
+      </div>
 
-      {renderCategoryManager('Income', 'income', settings.incomeCategories, newIncomeCat, setNewIncomeCat)}
-      {renderCategoryManager('Expenses', 'expense', settings.expenseCategories, newExpenseCat, setNewExpenseCat)}
-      {renderCategoryManager('Investments / Savings', 'investment', settings.investmentCategories, newInvestmentCat, setNewInvestmentCat)}
+      <div className="animate-fade-in-up">
+        {renderCategoryManager('Income', 'income', settings.incomeCategories, newIncomeCat, setNewIncomeCat)}
+        {renderCategoryManager('Expenses', 'expense', settings.expenseCategories, newExpenseCat, setNewExpenseCat)}
+        {renderCategoryManager('Investments / Savings', 'investment', settings.investmentCategories, newInvestmentCat, setNewInvestmentCat)}
+      </div>
     </div>
   );
 };
