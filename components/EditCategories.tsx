@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { AppSettings, Transaction } from '../types';
 
 interface EditCategoriesProps {
@@ -12,13 +12,15 @@ interface EditCategoriesProps {
   onBack: () => void;
 }
 
-// Fixed: Explicitly defining all properties used in the drag logic
-interface DragState {
+// Strictly defined state for the drag action
+interface DragInfo {
   index: number;
   type: 'income' | 'expense' | 'investment';
   startY: number;
   currentY: number;
   initialItemName: string;
+  itemHeight: number;
+  gap: number;
 }
 
 const EditCategories: React.FC<EditCategoriesProps> = ({ 
@@ -32,8 +34,8 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
   const [editing, setEditing] = useState<{ type: string; name: string } | null>(null);
   const [editingText, setEditingText] = useState('');
 
-  // Drag state for physics-based movement
-  const [dragState, setDragState] = useState<DragState | null>(null);
+  // The active drag state
+  const [activeDrag, setActiveDrag] = useState<DragInfo | null>(null);
   const containerRefs = useRef<Record<string, HTMLDivElement | null>>({
     income: null,
     expense: null,
@@ -55,69 +57,71 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
     setEditingText('');
   };
 
-  /**
-   * Fluid Pointer Move Logic
-   * Tracks movement and calculates when to swap items
-   */
-  const onPointerMove = (e: PointerEvent) => {
-    if (!dragState) return;
+  // --- Drag & Drop Core Logic ---
 
-    // Update current visual position for translateY
-    setDragState(prev => prev ? ({ ...prev, currentY: e.clientY }) : null);
-
-    const typeKey = `${dragState.type}Categories` as keyof AppSettings;
-    const currentCategories = settings[typeKey] as string[];
-    const container = containerRefs.current[dragState.type];
-    
-    if (!container || !Array.isArray(currentCategories)) return;
-
-    const children = Array.from(container.children) as HTMLElement[];
-    if (children.length < 2) return;
-
-    // Calculate item sizing for logical index shifting
-    const itemHeight = children[0].offsetHeight;
-    const gap = 12; // space-y-3 is 0.75rem (12px)
-    const step = itemHeight + gap;
-    
-    const deltaY = e.clientY - dragState.startY;
-    const indexShift = Math.round(deltaY / step);
-    const targetIndex = Math.max(0, Math.min(currentCategories.length - 1, dragState.index + indexShift));
-
-    // Logical Swap: Find where the item is now and move it to target
-    const realCurrentIndex = currentCategories.indexOf(dragState.initialItemName);
-
-    if (realCurrentIndex !== -1 && realCurrentIndex !== targetIndex) {
-        const newCategories = [...currentCategories];
-        const [movedItem] = newCategories.splice(realCurrentIndex, 1);
-        newCategories.splice(targetIndex, 0, movedItem);
-        onReorderCategories(dragState.type, newCategories);
-    }
-  };
-
-  const onPointerUp = () => {
-    setDragState(null);
-    window.removeEventListener('pointermove', onPointerMove);
-    window.removeEventListener('pointerup', onPointerUp);
-  };
-
-  const startDrag = (e: React.PointerEvent, index: number, type: 'income' | 'expense' | 'investment', name: string) => {
-    // Prevent default touch behaviors like scrolling or text selection magnification
-    const target = e.currentTarget as HTMLElement;
-    target.setPointerCapture(e.pointerId);
-
-    const initialDrag: DragState = {
-        index,
-        type,
-        startY: e.clientY,
-        currentY: e.clientY,
-        initialItemName: name
+  useEffect(() => {
+    const onPointerMove = (e: PointerEvent) => {
+      if (!activeDrag) return;
+      setActiveDrag(prev => prev ? { ...prev, currentY: e.clientY } : null);
     };
 
-    setDragState(initialDrag);
+    const onPointerUp = () => {
+      if (!activeDrag) return;
 
-    // Using global listeners for high-precision tracking even if finger leaves the item bounds
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
+      const { index, type, startY, currentY, itemHeight, gap, initialItemName } = activeDrag;
+      
+      // Calculate how many positions we shifted
+      const totalStep = itemHeight + gap;
+      const displacement = currentY - startY;
+      const indexShift = Math.round(displacement / totalStep);
+      
+      const typeKey = `${type}Categories` as keyof AppSettings;
+      const currentList = settings[typeKey] as string[];
+      
+      const newIndex = Math.max(0, Math.min(currentList.length - 1, index + indexShift));
+
+      if (newIndex !== index) {
+          const newList = [...currentList];
+          const [movedItem] = newList.splice(index, 1);
+          newList.splice(newIndex, 0, movedItem);
+          onReorderCategories(type, newList);
+      }
+
+      setActiveDrag(null);
+    };
+
+    if (activeDrag) {
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+    }
+
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+  }, [activeDrag, settings, onReorderCategories]);
+
+  const startDrag = (e: React.PointerEvent, index: number, type: 'income' | 'expense' | 'investment', name: string) => {
+    const container = containerRefs.current[type];
+    if (!container) return;
+
+    // Get item dimensions for physics calculations
+    const children = Array.from(container.children) as HTMLElement[];
+    const itemHeight = children[0].offsetHeight;
+    const gap = 12; // space-y-3 is 0.75rem = 12px
+
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+
+    setActiveDrag({
+      index,
+      type,
+      startY: e.clientY,
+      currentY: e.clientY,
+      initialItemName: name,
+      itemHeight,
+      gap
+    });
   };
 
   const renderCategoryManager = (
@@ -133,7 +137,7 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
       setNewCatValue('');
     };
 
-    const isThisSectionDragging = dragState?.type === type;
+    const isThisSectionDragging = activeDrag?.type === type;
 
     return (
       <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-gray-100 mb-6 transition-all duration-300">
@@ -145,29 +149,43 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
         </div>
         
         <div 
-            // Fixed: React 19 Ref assignment must return void/undefined
             ref={el => { containerRefs.current[type] = el; }}
             className="space-y-3 mb-6 relative"
         >
           {categories.map((cat, index) => {
             const isBeingEdited = editing?.name === cat && editing?.type === type;
-            const isDraggedItem = isThisSectionDragging && dragState.initialItemName === cat;
+            const isDraggedItem = isThisSectionDragging && activeDrag.initialItemName === cat;
             
-            // Calculate real-time translation for the item following the finger
             let transformStyle = '';
-            if (isDraggedItem) {
-                const offset = dragState.currentY - dragState.startY;
-                transformStyle = `translateY(${offset}px)`;
+            
+            if (activeDrag && isThisSectionDragging) {
+                const { startY, currentY, index: initialIdx, itemHeight, gap } = activeDrag;
+                const step = itemHeight + gap;
+                const dy = currentY - startY;
+                const indexShift = Math.round(dy / step);
+                const targetIdx = Math.max(0, Math.min(categories.length - 1, initialIdx + indexShift));
+
+                if (isDraggedItem) {
+                    // Item follows finger
+                    transformStyle = `translateY(${dy}px)`;
+                } else {
+                    // Siblings shift to create a "hole"
+                    if (index > initialIdx && index <= targetIdx) {
+                        transformStyle = `translateY(-${step}px)`;
+                    } else if (index < initialIdx && index >= targetIdx) {
+                        transformStyle = `translateY(${step}px)`;
+                    }
+                }
             }
 
             return (
               <div 
                 key={cat} 
-                className={`flex justify-between items-center border rounded-3xl transition-all duration-200
+                className={`flex justify-between items-center border rounded-3xl transition-all
                   ${isDraggedItem 
-                    ? 'bg-blue-50 border-blue-400 shadow-[0_20px_50px_rgba(37,99,235,0.25)] z-50 scale-[1.04] ring-8 ring-blue-500/10 cursor-grabbing' 
+                    ? 'bg-blue-50 border-blue-400 shadow-[0_25px_60px_-15px_rgba(37,99,235,0.4)] z-50 scale-[1.05] ring-8 ring-blue-500/10 cursor-grabbing' 
                     : isThisSectionDragging 
-                        ? 'bg-gray-50/40 border-gray-100 opacity-40 scale-[0.98]' 
+                        ? 'bg-gray-50/40 border-gray-100 opacity-60' 
                         : 'bg-gray-50 border-gray-100'
                   } 
                   ${isBeingEdited ? 'ring-4 ring-blue-500/10 bg-white border-blue-300 z-10' : ''}
@@ -175,12 +193,12 @@ const EditCategories: React.FC<EditCategoriesProps> = ({
                 `}
                 style={{ 
                     transform: transformStyle,
-                    transition: isDraggedItem ? 'none' : 'transform 0.4s cubic-bezier(0.2, 0, 0, 1), background-color 0.2s, opacity 0.3s, scale 0.3s',
+                    transition: isDraggedItem ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0, 0, 1), background-color 0.2s, opacity 0.3s, scale 0.3s',
                     WebkitUserSelect: 'none',
                     WebkitTouchCallout: 'none'
                 }}
               >
-                {/* Visual Drag Handle - Dedicated interactive area */}
+                {/* Drag Handle */}
                 <div 
                     className={`w-16 h-14 flex items-center justify-center transition-colors shrink-0 cursor-grab active:cursor-grabbing
                         ${isDraggedItem ? 'text-blue-600' : 'text-gray-300 active:text-gray-600'}
