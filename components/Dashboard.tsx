@@ -22,6 +22,7 @@ interface DashboardProps {
   incomeCategories: string[];
   expenseCategories: string[];
   investmentCategories: string[];
+  categoryIcons: Record<string, string>;
   cumulativeStartMonth?: string;
 }
 
@@ -37,6 +38,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   incomeCategories, 
   expenseCategories, 
   investmentCategories, 
+  categoryIcons,
   cumulativeStartMonth 
 }) => {
   const [viewTimeFrame, setViewTimeFrame] = useState<ViewMode>('monthly');
@@ -119,44 +121,106 @@ const Dashboard: React.FC<DashboardProps> = ({
     
   const netBalance = totalIncome - totalExpenses;
 
+  // Helper for consistent icon + name display
+  const getDisplayCategoryName = (name: string) => {
+      const icon = categoryIcons[name];
+      return icon ? `${icon} ${name}` : name;
+  };
+
   const renderSection = (title: 'Income' | 'Expenses' | 'Savings', categories: string[], headerColor: string) => {
     const sectionKey = title.toLowerCase() as 'income' | 'expenses' | 'savings';
     const isExpanded = expandedSections[sectionKey];
     const type = sectionKey === 'income' ? 'income' : sectionKey === 'expenses' ? 'expense' : 'investment';
 
-    // 1. Calculate items for defined categories
-    const validItems = categories
+    const otherCategories = categories.filter(c => c.toLowerCase() === 'others');
+    const mainCategories = categories.filter(c => c.toLowerCase() !== 'others');
+
+    const chartItems = categories
         .map(cat => ({ name: cat, value: Math.abs(spendingMap[cat] || 0) }))
         .filter(item => item.value > 0);
     
-    // 2. Identify "Stray" transactions (type matches but category is not in list)
     const strayTxs = filteredTransactions.filter(t => 
         t.type === type && !categories.includes(t.category)
     );
     const strayValue = strayTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
-
-    // 3. Build detailed list for display
-    const detailedCategories = [...categories];
     const hasStray = strayValue > 0;
-    // We'll treat "Others" as a special catch-all if it's not already in the list
-    const catchAllName = "Others / Uncategorized";
-    if (hasStray && !categories.includes(catchAllName)) {
-        // We don't push it to the actual array because we handle it specially below
-    }
 
-    // Pie chart items
-    const chartItems = [...validItems];
-    if (hasStray) chartItems.push({ name: 'Uncategorized', value: strayValue });
+    if (hasStray) {
+        chartItems.push({ name: 'Uncategorized', value: strayValue });
+    }
     
     chartItems.sort((a, b) => b.value - a.value);
     const top5 = chartItems.slice(0, 5);
     const othersPieValue = chartItems.slice(5).reduce((sum, item) => sum + item.value, 0);
     
     const finalChartData = [...top5];
-    if (othersPieValue > 0) finalChartData.push({ name: 'Others', value: othersPieValue });
+    if (othersPieValue > 0) finalChartData.push({ name: 'Misc', value: othersPieValue });
     
     const chartColors = title === 'Income' ? INCOME_CHART_COLORS : (title === 'Expenses' ? EXPENSE_CHART_COLORS : INVESTMENT_CHART_COLORS);
     const totalTracked = filteredTransactions.filter(t => t.type === type).reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+    const renderCategoryRow = (cat: string) => {
+        const tracked = spendingMap[cat] || 0;
+        const budget = (baseCategoryBudgets[cat] || 0) * budgetMultiplier;
+        const percent = budget > 0 ? (Math.abs(tracked) / budget) * 100 : 0;
+        const isDrilledDown = expandedCategories[`${sectionKey}-${cat}`];
+        const barColor = percent > 100 ? 'bg-red-500' : title === 'Income' ? 'bg-green-500' : title === 'Expenses' ? 'bg-red-600' : 'bg-blue-600';
+        
+        const normalBg = title === 'Income' ? 'bg-green-50/40' : title === 'Expenses' ? 'bg-red-50/40' : 'bg-blue-50/40';
+        const activeBg = title === 'Income' ? 'bg-green-100' : title === 'Expenses' ? 'bg-red-100' : 'bg-blue-100';
+        const hoverBg = title === 'Income' ? 'hover:bg-green-50/80' : title === 'Expenses' ? 'hover:bg-red-50/80' : 'hover:bg-blue-50/80';
+        const childBg = title === 'Income' ? 'bg-green-50/60' : title === 'Expenses' ? 'bg-red-50/60' : 'bg-blue-50/60';
+        
+        const catTransactions = filteredTransactions.filter(t => t.category === cat && t.type === type);
+
+        if (tracked === 0 && budget === 0) return null;
+
+        return (
+          <div key={cat} className="flex flex-col border-b border-gray-100 last:border-0">
+            <div 
+              onClick={() => toggleCategoryDrilldown(`${sectionKey}-${cat}`)} 
+              className={`flex justify-between items-center py-4 px-4 transition-colors cursor-pointer ${isDrilledDown ? activeBg : `${normalBg} ${hoverBg}`}`}
+            >
+              <div className="flex flex-col flex-1 pr-4 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                     <span className={`font-bold text-sm leading-tight ${cat.toLowerCase() === 'others' ? 'text-gray-500 italic' : 'text-gray-800'}`}>
+                        {getDisplayCategoryName(cat)}
+                     </span>
+                     {catTransactions.length > 0 && <span className="text-[10px] text-gray-500 font-bold bg-white/50 px-1.5 rounded-md border border-gray-100">{catTransactions.length} items</span>}
+                     <svg className={`w-3 h-3 text-gray-400 transition-transform ${isDrilledDown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                  </div>
+                  <div className="w-full bg-gray-200/50 rounded-full h-1 mt-2 max-w-[140px]">
+                     <div className={`${barColor} h-1 rounded-full transition-all duration-500`} style={{ width: `${Math.min(percent, 100)}%` }}></div>
+                  </div>
+              </div>
+              <div className="flex flex-col items-end shrink-0">
+                  <span className="font-mono font-bold text-gray-900 text-sm">${Math.abs(tracked).toLocaleString()}</span>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">/ {budget > 0 ? Math.round(budget).toLocaleString() : '--'}</span>
+              </div>
+            </div>
+            {isDrilledDown && (
+              <div className="divide-y divide-white/50">
+                  {catTransactions.length > 0 ? catTransactions.map(tx => (
+                      <div key={tx.id} className={`flex justify-between items-center py-3 pl-12 pr-4 ${childBg}`}>
+                          <div className="flex flex-col min-w-0">
+                              <span className="text-[11px] font-bold text-gray-800 truncate">
+                                  {getDisplayCategoryName(tx.category)}
+                              </span>
+                              <div className="flex flex-col mt-0.5">
+                                  <span className="text-[9px] text-gray-500 font-semibold">{format(new Date(tx.date), 'MMMM d, yyyy')}</span>
+                                  {tx.note && <span className="text-[9px] text-gray-400 italic font-medium truncate max-w-[200px]">{tx.note}</span>}
+                              </div>
+                          </div>
+                          <span className={`text-[11px] font-mono font-bold shrink-0 ml-4 ${tx.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
+                              {tx.type === 'income' ? '+' : ''}{Math.abs(tx.amount).toLocaleString()}
+                          </span>
+                      </div>
+                  )) : <div className={`py-4 pl-12 pr-4 text-[10px] text-gray-400 italic ${childBg}`}>No transactions found</div>}
+              </div>
+            )}
+          </div>
+        );
+    };
 
     return (
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-6 border border-gray-200">
@@ -182,7 +246,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div key={entry.name} className="flex items-center justify-between text-[10px] sm:text-xs">
                             <div className="flex items-center min-w-0">
                                <span className="w-2 h-2 rounded-full mr-1.5 shrink-0" style={{ backgroundColor: chartColors[index % chartColors.length] }}></span>
-                               <span className="text-gray-500 truncate">{entry.name}</span>
+                               <span className="text-gray-500 truncate">{getDisplayCategoryName(entry.name)}</span>
                             </div>
                             <span className="font-mono font-bold text-gray-700 ml-1">${entry.value.toLocaleString()}</span>
                         </div>
@@ -208,82 +272,40 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <span>Category / Progress</span>
                 <span>Tracked / Budget</span>
             </div>
-            {/* Defined Categories */}
-            {categories.map(cat => {
-              const tracked = spendingMap[cat] || 0;
-              const budget = (baseCategoryBudgets[cat] || 0) * budgetMultiplier;
-              const percent = budget > 0 ? (Math.abs(tracked) / budget) * 100 : 0;
-              const isDrilledDown = expandedCategories[`${sectionKey}-${cat}`];
-              const barColor = percent > 100 ? 'bg-red-500' : title === 'Income' ? 'bg-green-500' : title === 'Expenses' ? 'bg-red-600' : 'bg-blue-600';
-              const activeBg = title === 'Income' ? 'bg-green-100' : title === 'Expenses' ? 'bg-red-100' : 'bg-blue-100';
-              const childBg = title === 'Income' ? 'bg-green-50/60' : title === 'Expenses' ? 'bg-red-50/60' : 'bg-blue-50/60';
-              const catTransactions = filteredTransactions.filter(t => t.category === cat && t.type === type);
+            
+            {mainCategories.map(cat => renderCategoryRow(cat))}
+            {otherCategories.map(cat => renderCategoryRow(cat))}
 
-              if (tracked === 0 && budget === 0) return null;
-
-              return (
-                <div key={cat} className="flex flex-col border-b border-gray-100 last:border-0">
-                  <div onClick={() => toggleCategoryDrilldown(`${sectionKey}-${cat}`)} className={`flex justify-between items-center py-4 px-4 transition-colors cursor-pointer ${isDrilledDown ? activeBg : 'hover:bg-white/50'}`}>
-                    <div className="flex flex-col flex-1 pr-4 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                           <span className="font-bold text-gray-800 text-sm leading-tight">{cat}</span>
-                           {catTransactions.length > 0 && <span className="text-[10px] text-gray-500 font-bold bg-white/50 px-1.5 rounded-md border border-gray-100">{catTransactions.length} items</span>}
-                           <svg className={`w-3 h-3 text-gray-400 transition-transform ${isDrilledDown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
-                        </div>
-                        <div className="w-full bg-gray-200/50 rounded-full h-1 mt-2 max-w-[140px]">
-                           <div className={`${barColor} h-1 rounded-full transition-all duration-500`} style={{ width: `${Math.min(percent, 100)}%` }}></div>
-                        </div>
-                    </div>
-                    <div className="flex flex-col items-end shrink-0">
-                        <span className="font-mono font-bold text-gray-900 text-sm">${Math.abs(tracked).toLocaleString()}</span>
-                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">/ {budget > 0 ? Math.round(budget).toLocaleString() : '--'}</span>
-                    </div>
-                  </div>
-                  {isDrilledDown && (
-                    <div className="divide-y divide-white/50">
-                        {catTransactions.length > 0 ? catTransactions.map(tx => (
-                            <div key={tx.id} className={`flex justify-between items-center py-3 pl-12 pr-4 ${childBg}`}>
-                                <div className="flex flex-col min-w-0">
-                                    <span className="text-[11px] font-bold text-gray-800 truncate">{tx.note || format(new Date(tx.date), 'MMMM d, yyyy')}</span>
-                                    {tx.note && <span className="text-[9px] text-gray-500 font-semibold">{format(new Date(tx.date), 'MMM d, yyyy')}</span>}
-                                </div>
-                                <span className={`text-[11px] font-mono font-bold shrink-0 ml-4 ${tx.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
-                                    {tx.type === 'income' ? '+' : ''}{Math.abs(tx.amount).toLocaleString()}
-                                </span>
-                            </div>
-                        )) : <div className={`py-4 pl-12 pr-4 text-[10px] text-gray-400 italic ${childBg}`}>No transactions found</div>}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* Virtual Stray / Others Row */}
             {hasStray && (
                <div className="flex flex-col border-t-2 border-dashed border-gray-100">
                   <div 
                     onClick={() => toggleCategoryDrilldown(`${sectionKey}-virtual-others`)} 
-                    className={`flex justify-between items-center py-4 px-4 transition-colors cursor-pointer bg-gray-50/80 ${expandedCategories[`${sectionKey}-virtual-others`] ? 'bg-blue-50' : 'hover:bg-gray-100'}`}
+                    className={`flex justify-between items-center py-4 px-4 transition-colors cursor-pointer bg-red-50/20 ${expandedCategories[`${sectionKey}-virtual-others`] ? 'bg-red-50' : 'hover:bg-red-50/40'}`}
                   >
                     <div className="flex flex-col flex-1 pr-4 min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                           <span className="font-bold text-blue-800 text-sm leading-tight italic">Uncategorized Others</span>
-                           <span className="text-[10px] text-blue-500 font-bold bg-white/50 px-1.5 rounded-md border border-blue-100">{strayTxs.length} items</span>
-                           <svg className={`w-3 h-3 text-blue-400 transition-transform ${expandedCategories[`${sectionKey}-virtual-others`] ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                           <span className="font-bold text-red-800 text-sm leading-tight italic underline decoration-red-200 decoration-2">Uncategorized Items</span>
+                           <span className="text-[10px] text-red-400 font-bold bg-white/50 px-1.5 rounded-md border border-red-100">{strayTxs.length} items</span>
+                           <svg className={`w-3 h-3 text-red-400 transition-transform ${expandedCategories[`${sectionKey}-virtual-others`] ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
                         </div>
                     </div>
                     <div className="flex flex-col items-end shrink-0">
-                        <span className="font-mono font-bold text-blue-900 text-sm">${strayValue.toLocaleString()}</span>
-                        <span className="text-[9px] text-blue-400 font-black uppercase tracking-tighter">Stray Items</span>
+                        <span className="font-mono font-bold text-red-900 text-sm">${strayValue.toLocaleString()}</span>
+                        <span className="text-[9px] text-red-400 font-black uppercase tracking-tighter">Missing Cat</span>
                     </div>
                   </div>
                   {expandedCategories[`${sectionKey}-virtual-others`] && (
-                    <div className="divide-y divide-white/50 bg-blue-50/40">
+                    <div className="divide-y divide-white/50 bg-red-50/40">
                         {strayTxs.map(tx => (
                             <div key={tx.id} className="flex justify-between items-center py-3 pl-12 pr-4">
                                 <div className="flex flex-col min-w-0">
-                                    <span className="text-[11px] font-bold text-gray-800 truncate">[{tx.category}] {tx.note || "No description"}</span>
-                                    <span className="text-[9px] text-gray-500 font-semibold">{format(new Date(tx.date), 'MMM d, yyyy')}</span>
+                                    <span className="text-[11px] font-bold text-gray-800 truncate">
+                                        {getDisplayCategoryName(tx.category || "Others")}
+                                    </span>
+                                    <div className="flex flex-col mt-0.5">
+                                        <span className="text-[9px] text-gray-500 font-semibold">{format(new Date(tx.date), 'MMMM d, yyyy')}</span>
+                                        {tx.note && <span className="text-[9px] text-gray-400 italic font-medium truncate max-w-[200px]">{tx.note}</span>}
+                                    </div>
                                 </div>
                                 <span className={`text-[11px] font-mono font-bold shrink-0 ml-4 ${tx.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
                                     {tx.type === 'income' ? '+' : ''}{Math.abs(tx.amount).toLocaleString()}

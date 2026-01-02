@@ -212,13 +212,11 @@ const App: React.FC = () => {
     showNotification(`Added Entry`);
   };
 
-  // Added handleUpdateTransaction to fix the undefined reference in Database view
   const handleUpdateTransaction = (updatedTx: Transaction) => {
     setTransactions(prev => prev.map(t => t.id === updatedTx.id ? updatedTx : t));
     showNotification(`Updated Entry`);
   };
 
-  // Added handleDeleteTransaction to fix the undefined reference in Database view
   const handleDeleteTransaction = (txId: string) => {
     setTransactions(prev => prev.filter(t => t.id !== txId));
     showNotification(`Deleted Entry`);
@@ -245,7 +243,7 @@ const App: React.FC = () => {
       </div>
 
       <main className="flex-1 px-6 pt-2 pb-6 max-w-2xl mx-auto w-full">
-        {view === AppView.DASHBOARD && <Dashboard transactions={sortedTransactions} baseCategoryBudgets={dashboardBudgets} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} cumulativeStartMonth={settings.cumulativeStartMonth} />}
+        {view === AppView.DASHBOARD && <Dashboard transactions={sortedTransactions} baseCategoryBudgets={dashboardBudgets} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} categoryIcons={settings.categoryIcons} cumulativeStartMonth={settings.cumulativeStartMonth} />}
         {view === AppView.ADD_TRANSACTION && <AddTransaction onAdd={handleAddTransaction} sheetDbUrl={settings.sheetDbUrl} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} />}
         {view === AppView.STATISTICS && <Statistics transactions={sortedTransactions} incomeCategories={settings.incomeCategories} investmentCategories={settings.investmentCategories} expenseCategories={settings.expenseCategories} settings={settings} />}
         {view === AppView.DATABASE && <Database transactions={sortedTransactions} onUpdate={handleUpdateTransaction} onDelete={handleDeleteTransaction} settings={settings} onRefresh={() => handleSyncData(settings.sheetDbUrl, "Form Input")} />}

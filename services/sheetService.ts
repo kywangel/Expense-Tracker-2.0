@@ -64,14 +64,15 @@ export const fetchTransactions = async (
 
     // Fuzzy matching logic: Wildcard + Skip Spacing
     const findMatch = (rawInput: string): string => {
-        const inputNorm = normalize(rawInput);
+        const inputTrimmed = (rawInput || "").trim();
+        const inputNorm = normalize(inputTrimmed);
         if (!inputNorm) return "Others";
 
         // 1. Try Exact Match First
-        const exact = knownCategories.find(c => c.toLowerCase() === rawInput.trim().toLowerCase());
+        const exact = knownCategories.find(c => c.toLowerCase() === inputTrimmed.toLowerCase());
         if (exact) return exact;
 
-        // 2. Try Wildcard Match for categories that have icons (indicating "Smart" categories)
+        // 2. Try Wildcard Match for categories that have icons
         const wildcardMatch = knownCategories.find(c => {
             const catNorm = normalize(c);
             if (!catNorm) return false;
@@ -83,8 +84,9 @@ export const fetchTransactions = async (
             return inputNorm === catNorm;
         });
 
-        // If no match found among known categories, return "Others"
-        return wildcardMatch || "Others";
+        // If no match found among known categories, return the trimmed original input 
+        // This allows the Dashboard to identify it as 'stray' and show its real name
+        return wildcardMatch || inputTrimmed || "Others";
     };
 
     if (isCsv) {
