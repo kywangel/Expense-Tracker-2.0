@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Transaction } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
@@ -86,6 +85,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [transactions, cumulativeStartMonth]);
 
   const filteredTransactions = useMemo(() => {
+      const todayBoundary = addDays(startOfDay(new Date()), 1); // Up to end of today
       return transactions.filter(t => {
           const tDate = new Date(t.date);
           if (viewTimeFrame === 'monthly') {
@@ -93,7 +93,8 @@ const Dashboard: React.FC<DashboardProps> = ({
           } else if (viewTimeFrame === 'daily') {
               return isSameDay(tDate, viewDate);
           } else {
-              return tDate >= startOfDay(firstTxDate) && tDate <= startOfDay(viewDate);
+              // Cumulative view logic: strictly from settings start month up to today
+              return tDate >= startOfDay(firstTxDate) && tDate < todayBoundary;
           }
       });
   }, [transactions, viewTimeFrame, viewDate, firstTxDate]);
@@ -110,7 +111,9 @@ const Dashboard: React.FC<DashboardProps> = ({
       if (viewTimeFrame === 'daily') {
           return 1 / getDaysInMonth(viewDate);
       }
-      const monthsDiff = differenceInCalendarMonths(viewDate, firstTxDate);
+      // For cumulative, always calculate relative to "Today" to match filteredTransactions range
+      const today = new Date();
+      const monthsDiff = differenceInCalendarMonths(today, firstTxDate);
       return Math.max(1, monthsDiff + 1);
   }, [viewTimeFrame, firstTxDate, viewDate]);
 
@@ -327,7 +330,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const periodLabel = useMemo(() => {
     if (viewTimeFrame === 'monthly') return format(viewDate, 'MMMM yyyy');
     if (viewTimeFrame === 'daily') return format(viewDate, 'MMMM d, yyyy');
-    return `Cumulative (from ${format(firstTxDate, 'MMM yyyy')})`;
+    return `Cumulative (since ${format(firstTxDate, 'MMM yyyy')})`;
   }, [viewTimeFrame, viewDate, firstTxDate]);
 
   return (
@@ -346,10 +349,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
-            <button onClick={handlePrev} className="w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-600 active:scale-90 transition-transform">
+            <button onClick={handlePrev} disabled={viewTimeFrame === 'cumulative'} className="w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-600 active:scale-90 transition-transform disabled:opacity-30">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <button onClick={handleNext} className="w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-600 active:scale-90 transition-transform">
+            <button onClick={handleNext} disabled={viewTimeFrame === 'cumulative'} className="w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-600 active:scale-90 transition-transform disabled:opacity-30">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>

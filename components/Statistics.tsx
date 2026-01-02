@@ -9,10 +9,10 @@ import {
     eachDayOfInterval, eachMonthOfInterval, 
     isToday, isSameMonth, addWeeks, isSameDay,
     startOfDay, addDays, getYear, subMonths, startOfMonth, endOfMonth,
-    subWeeks, startOfWeek as dateFnsStartOfWeek, endOfYear
+    subWeeks, startOfWeek as dateFnsStartOfWeek, endOfYear, addMonths
 } from 'date-fns';
 
-const startOfYear = (date: Date) => {
+const startOfYearFunc = (date: Date) => {
     const d = new Date(date);
     d.setMonth(0, 1);
     d.setHours(0, 0, 0, 0);
@@ -62,10 +62,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   const scrollRef = useRef<HTMLDivElement>(null);
   const spendingScrollRef = useRef<HTMLDivElement>(null);
 
-  // Dynamic Y-Axis scale based on visible bars
   const [visibleMax, setVisibleMax] = useState(1000);
-  
-  // Centrally manage the analysis pop-up
   const [activePopupData, setActivePopupData] = useState<any>(null);
 
   const sortedTransactions = useMemo(() => 
@@ -73,27 +70,25 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     [transactions]
   );
 
-  // --- Net Asset Calculations ---
+  // Net Asset calculation: Cumulative Income - Cumulative Expenses
   const allMonthlyBalances = useMemo(() => {
     if (sortedTransactions.length === 0) return [];
-    const firstTxDate = new Date(sortedTransactions[0].date);
-    const historyMonths = Math.max(47, Math.ceil((new Date().getTime() - firstTxDate.getTime()) / (30 * 24 * 3600 * 1000)));
-    const start = startOfMonth(subMonths(new Date(), historyMonths));
+    
+    let start = startOfMonth(subMonths(new Date(), 24)); 
+    if (settings.cumulativeStartMonth) {
+        const [y, m] = settings.cumulativeStartMonth.split('-').map(Number);
+        start = new Date(y, m - 1, 1);
+    } else if (sortedTransactions.length > 0) {
+        start = startOfMonth(new Date(sortedTransactions[0].date));
+    }
+    
     const end = endOfMonth(new Date());
     const months = eachMonthOfInterval({ start, end });
     
     let runningWealth = 0;
     let runningInvestment = 0;
     
-    const priorTxs = sortedTransactions.filter(tx => new Date(tx.date) < start);
-    priorTxs.forEach(tx => {
-        if (tx.type === 'income') runningWealth += Math.abs(tx.amount);
-        if (tx.type === 'expense') runningWealth -= Math.abs(tx.amount);
-        if (tx.type === 'investment') runningInvestment += Math.abs(tx.amount);
-    });
-
-    const results: { name: string; date: Date; wealth: number; investment: number }[] = [];
-    months.forEach(monthDate => {
+    return months.map(monthDate => {
         const mStart = startOfMonth(monthDate);
         const mEnd = endOfMonth(monthDate);
         const monthTxs = sortedTransactions.filter(tx => {
@@ -105,10 +100,9 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             if (tx.type === 'expense') runningWealth -= Math.abs(tx.amount);
             if (tx.type === 'investment') runningInvestment += Math.abs(tx.amount);
         });
-        results.push({ name: format(monthDate, 'MMM'), date: monthDate, wealth: runningWealth, investment: runningInvestment });
+        return { name: format(monthDate, 'MMM'), date: monthDate, wealth: runningWealth, investment: runningInvestment };
     });
-    return results;
-  }, [sortedTransactions]);
+  }, [sortedTransactions, settings.cumulativeStartMonth]);
 
   const assetChartDomain = useMemo(() => {
     if (allMonthlyBalances.length === 0) return [0, 1000];
@@ -122,7 +116,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
 
   const [activeWindowEndIndex, setActiveWindowEndIndex] = useState(allMonthlyBalances.length > 0 ? allMonthlyBalances.length - 1 : 0);
 
-  // --- Drag & Scroll Logic ---
   const isDragging = useRef(false);
   const startX = useRef(0);
   const scrollLeftState = useRef(0);
@@ -155,16 +148,25 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   };
 
   const windowStats = useMemo(() => {
-    if (allMonthlyBalances.length === 0) return { change: 0, percent: 0, range: 'No data' };
+    if (allMonthlyBalances.length === 0) return { current: 0, change: 0, percent: 0, range: 'No data' };
     const safeIdx = Math.max(0, Math.min(activeWindowEndIndex, allMonthlyBalances.length - 1));
-    const curr = allMonthlyBalances[safeIdx]?.[assetView] || 0;
+    const current = allMonthlyBalances[safeIdx]?.[assetView] || 0;
     const prevIdx = Math.max(0, safeIdx - 12);
     const prev = allMonthlyBalances[prevIdx]?.[assetView] || 0;
-    const change = curr - prev;
+    const change = current - prev;
     const percent = prev !== 0 ? (change / Math.abs(prev)) * 100 : 0;
     const dateRange = `${format(allMonthlyBalances[prevIdx].date, 'MMM yy')} - ${format(allMonthlyBalances[safeIdx].date, 'MMM yy')}`;
-    return { change, percent, range: dateRange };
+    return { current, change, percent, range: dateRange };
   }, [allMonthlyBalances, activeWindowEndIndex, assetView]);
+
+  const gradientOffset = useMemo(() => {
+    const data = allMonthlyBalances.map(i => assetView === 'wealth' ? i.wealth : i.investment);
+    const max = Math.max(...data);
+    const min = Math.min(...data);
+    if (max <= 0) return 0;
+    if (min >= 0) return 1;
+    return max / (max - min);
+  }, [allMonthlyBalances, assetView]);
 
   useEffect(() => {
     if (scrollRef.current && allMonthlyBalances.length > 0) {
@@ -175,7 +177,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     }
   }, [allMonthlyBalances.length]);
 
-  // --- Spending Analysis Logic ---
   const spendingChartData = useMemo(() => {
     const today = new Date();
     let interval: { start: Date; end: Date };
@@ -189,7 +190,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     switch (period) {
       case 'W':
         const currentWeekEnd = endOfWeek(today);
-        const windowStart = subWeeks(dateFnsStartOfWeek(currentWeekEnd), 24); // Show plenty to scroll
+        const windowStart = subWeeks(dateFnsStartOfWeek(currentWeekEnd), 24); 
         interval = { start: windowStart, end: currentWeekEnd };
         dataPoints = eachDayOfInterval(interval);
         formatLabel = (date) => format(date, 'EEE');
@@ -222,26 +223,21 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     });
   }, [sortedTransactions, period, expenseCategories]);
 
-  // Handle Dynamic Y-Axis based on scroll position
   const handleSpendingScroll = useCallback(() => {
     if (!spendingScrollRef.current || spendingChartData.length === 0) return;
     const el = spendingScrollRef.current;
     const scrollWidth = el.scrollWidth;
     const scrollLeft = el.scrollLeft;
-
     const visibleCount = period === 'W' ? 7 : 12;
     const barWidth = scrollWidth / spendingChartData.length;
-    
     const startIndex = Math.max(0, Math.floor(scrollLeft / barWidth));
     const endIndex = Math.min(spendingChartData.length - 1, startIndex + visibleCount);
     const visibleData = spendingChartData.slice(startIndex, endIndex + 1);
-
     const maxVal = Math.max(...visibleData.map(d => {
         let sum = 0;
         [...expenseCategories, "Uncategorized Items"].forEach(cat => { sum += (d[cat] || 0); });
         return sum;
     }));
-
     setVisibleMax(Math.ceil(maxVal * 1.1) || 1000);
   }, [spendingChartData, period, expenseCategories]);
 
@@ -264,7 +260,105 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     return icon ? `${icon} ${name}` : name;
   };
 
-  // --- Centered Pop-up Modal (Interactive Tooltip) ---
+  /**
+   * Daily View Table implementation as requested.
+   */
+  const DailyTableView = () => {
+    const viewDate = startOfDay(addDays(new Date(), dateOffset));
+    const yearStr = getYear(viewDate).toString();
+    const effectiveBudgets = settings.yearlyBudgets?.[yearStr] || settings.baseCategoryBudgets || {};
+    const trackedCats = settings.dailyViewCategories || [];
+    const freqTargets = settings.dailyTransactionsPerMonth || {};
+    
+    const monthTxs = transactions.filter(tx => isSameMonth(new Date(tx.date), viewDate) && tx.type === 'expense');
+    const selectedDayTxs = transactions.filter(tx => isSameDay(new Date(tx.date), viewDate) && tx.type === 'expense');
+    
+    const totalExpenseBudget = expenseCategories.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
+    const trackedBudgetSum = trackedCats.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
+    
+    const rows = trackedCats.map(cat => {
+        const budget = effectiveBudgets[cat] || 0;
+        const freq = freqTargets[cat] || 0;
+        const unit = freq > 0 ? budget / freq : 0;
+        const daySpent = selectedDayTxs.filter(t => t.category === cat).reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        const monthSpent = monthTxs.filter(t => t.category === cat).reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        const monthCount = monthTxs.filter(t => t.category === cat && Math.abs(t.amount) > 0).length;
+        
+        return { cat, budget, freq, unit, daySpent, leftMonth: budget - monthSpent, times: monthCount };
+    });
+    
+    const untrackedBudget = totalExpenseBudget - trackedBudgetSum;
+    const othersDaySpent = selectedDayTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const othersMonthSpent = monthTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const othersMonthCount = monthTxs.filter(t => !trackedCats.includes(t.category) && Math.abs(t.amount) > 0).length;
+    
+    const othersRow = { 
+        cat: 'Others', 
+        budget: untrackedBudget, 
+        freq: 0, 
+        unit: 0, 
+        daySpent: othersDaySpent, 
+        leftMonth: untrackedBudget - othersMonthSpent,
+        times: othersMonthCount
+    };
+
+    const spentHeaderLabel = isToday(viewDate) ? 'Today' : format(viewDate, 'MMM d');
+
+    return (
+      <div className="space-y-4 animate-fade-in">
+        <div className="flex items-center justify-center gap-4 py-2">
+            <button onClick={() => setDateOffset(p => p - 1)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <div className="flex flex-col items-center">
+                <span className="text-sm font-bold text-gray-800">{format(viewDate, 'EEEE, MMM do')}</span>
+            </div>
+            <button onClick={() => setDateOffset(p => p + 1)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+            </button>
+        </div>
+
+        <div className="overflow-x-auto -mx-4 sm:mx-0 rounded-xl border border-gray-100 shadow-sm">
+            <table className="w-full text-[11px] sm:text-xs text-left border-collapse bg-white">
+                <thead>
+                    <tr className="bg-gray-50 text-gray-400 font-bold uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-3">Category</th>
+                        <th className="px-2 py-3 text-right">Budget</th>
+                        <th className="px-2 py-3 text-center">Freq</th>
+                        <th className="px-2 py-3 text-right">Unit</th>
+                        <th className="px-2 py-3 text-right bg-blue-50/50 text-blue-600">{spentHeaderLabel}</th>
+                        <th className="px-2 py-3 text-right">Left</th>
+                        <th className="px-2 py-3 text-center">Times</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                    {rows.map(r => (
+                        <tr key={r.cat}>
+                            <td className="px-3 py-3 font-semibold text-gray-700">{getDisplayCategoryName(r.cat)}</td>
+                            <td className="px-2 py-3 text-right font-mono text-gray-600">${f0(r.budget)}</td>
+                            <td className="px-2 py-3 text-center font-mono text-gray-400">{r.freq > 0 ? r.freq : '--'}</td>
+                            <td className="px-2 py-3 text-right font-mono text-gray-400">{r.unit > 0 ? `$${f0(r.unit)}` : '$--'}</td>
+                            <td className={`px-2 py-3 text-right font-mono font-bold bg-blue-50/30 ${r.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>${f0(r.daySpent)}</td>
+                            <td className={`px-2 py-3 text-right font-mono ${r.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>${f0(r.leftMonth)}</td>
+                            <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{r.times}</td>
+                        </tr>
+                    ))}
+                    <tr className="bg-gray-50/50 italic">
+                        <td className="px-3 py-3 font-semibold text-gray-700">Others</td>
+                        <td className="px-2 py-3 text-right font-mono text-gray-600">${f0(othersRow.budget)}</td>
+                        <td className="px-2 py-3 text-center font-mono text-gray-400">--</td>
+                        <td className="px-2 py-3 text-right font-mono text-gray-400">$--</td>
+                        <td className={`px-2 py-3 text-right font-mono font-bold bg-blue-50/30 ${othersRow.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>${f0(othersRow.daySpent)}</td>
+                        <td className={`px-2 py-3 text-right font-mono ${othersRow.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>${f0(othersRow.leftMonth)}</td>
+                        <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{othersRow.times}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+      </div>
+    );
+  };
+
   const CenteredAnalysisPopup = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -274,7 +368,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         
       const validItems = payload.filter((item: any) => item.value !== undefined && item.value > 0);
       const sortedAll = [...validItems].sort((a: any, b: any) => b.value - a.value);
-      
       const top5 = sortedAll.slice(0, 5);
       const othersVal = sortedAll.slice(5).reduce((s, i) => s + i.value, 0);
       const total = sortedAll.reduce((s, i) => s + i.value, 0);
@@ -317,12 +410,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                   <span className="text-[22px] font-mono font-black text-blue-600 leading-none">${f1(total)}</span>
               </div>
             </div>
-            <button 
-                onClick={() => setActivePopupData(null)}
-                className="bg-gray-900 text-white py-5 font-black text-[11px] uppercase tracking-[0.4em] active:bg-gray-800 transition-colors w-full"
-            >
-                Dismiss
-            </button>
+            <button onClick={() => setActivePopupData(null)} className="bg-gray-900 text-white py-5 font-black text-[11px] uppercase tracking-[0.4em] active:bg-gray-800 transition-colors w-full">Dismiss</button>
           </div>
         </div>
       );
@@ -330,68 +418,8 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     return null;
   };
 
-  const DailyTableView = () => {
-    const viewDate = startOfDay(addDays(new Date(), dateOffset));
-    const yearStr = getYear(viewDate).toString();
-    const effectiveBudgets = settings.yearlyBudgets?.[yearStr] || settings.baseCategoryBudgets || {};
-    const trackedCats = settings.dailyViewCategories || [];
-    const monthTxs = transactions.filter(tx => isSameMonth(new Date(tx.date), viewDate) && tx.type === 'expense');
-    const selectedDayTxs = transactions.filter(tx => isSameDay(new Date(tx.date), viewDate) && tx.type === 'expense');
-    const totalExpenseBudget = expenseCategories.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
-    const trackedBudgetSum = trackedCats.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
-    const rows = trackedCats.map(cat => {
-        const budget = effectiveBudgets[cat] || 0;
-        const daySpent = selectedDayTxs.filter(t => t.category === cat).reduce((sum, t) => sum + Math.abs(t.amount), 0);
-        const monthSpent = monthTxs.filter(t => t.category === cat).reduce((sum, t) => sum + Math.abs(t.amount), 0);
-        return { cat, budget, daySpent, leftMonth: budget - monthSpent };
-    });
-    const untrackedBudget = totalExpenseBudget - trackedBudgetSum;
-    const othersDaySpent = selectedDayTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    const othersMonthSpent = monthTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    rows.push({ cat: 'Others', budget: untrackedBudget, daySpent: othersDaySpent, leftMonth: untrackedBudget - othersMonthSpent });
-    const spentHeaderLabel = isToday(viewDate) ? 'Today' : format(viewDate, 'MMM d');
-    return (
-        <div className="space-y-4 animate-fade-in px-1">
-            <div className="flex items-center justify-between py-2 bg-white sticky top-0 z-[40]">
-                <button onClick={() => setDateOffset(p => p - 1)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-400 border border-gray-100 active:scale-90 transition-transform">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                </button>
-                <div className="flex flex-col items-center"><span className="text-sm font-bold text-gray-700 tracking-tight">{format(viewDate, 'EEEE, MMM do')}</span></div>
-                <div className="flex items-center gap-2">
-                    <button onClick={() => setDateOffset(0)} disabled={dateOffset === 0} className="text-xs font-bold text-blue-600 px-2 disabled:opacity-30">Today</button>
-                    <button onClick={() => setDateOffset(p => p + 1)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-400 border border-gray-100 active:scale-90 transition-transform">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                    </button>
-                </div>
-            </div>
-            <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-                <table className="w-full text-[10px] text-left border-collapse">
-                    <thead>
-                        <tr className="text-gray-400 font-bold uppercase tracking-widest border-b border-gray-50 bg-gray-50/20">
-                            <th className="px-4 py-3">Category</th>
-                            <th className="px-2 py-3 text-right">Budget</th>
-                            <th className="px-2 py-3 text-right text-blue-600 bg-blue-50/10">{spentHeaderLabel}</th>
-                            <th className="px-2 py-3 text-right">Left</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                        {rows.map(r => (
-                            <tr key={r.cat}>
-                                <td className="px-4 py-3 font-semibold text-gray-600">{getDisplayCategoryName(r.cat)}</td>
-                                <td className="px-2 py-3 text-right font-mono text-gray-400">${f0(r.budget)}</td>
-                                <td className={`px-2 py-3 text-right font-mono font-bold ${r.daySpent > 0 ? 'text-blue-500' : 'text-gray-300'}`}>${f0(r.daySpent)}</td>
-                                <td className={`px-2 py-3 text-right font-mono font-bold ${r.leftMonth < 0 ? 'text-red-400' : 'text-green-500'}`}>${f0(r.leftMonth)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-  };
-
   const flowOverTimeData = useMemo(() => {
-    const yearStart = startOfYear(new Date(monthlyFlowYear, 0, 1));
+    const yearStart = startOfYearFunc(new Date(monthlyFlowYear, 0, 1));
     const yearEnd = endOfYear(new Date(monthlyFlowYear, 11, 31));
     const monthlyDataMap = new Map<string, { name: string, income: number, expense: number, investment: number }>();
     const yearMonths = eachMonthOfInterval({ start: yearStart, end: yearEnd });
@@ -436,7 +464,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
          .animate-fade-in { animation: fadeIn 0.2s cubic-bezier(0.2, 0, 0, 1) forwards; }
        `}} />
 
-       {/* Net Asset Card */}
        <div className="bg-white p-6 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 overflow-hidden select-none">
             <div className="flex justify-between items-end mb-6 relative z-30 bg-white">
                 <h3 className="font-bold text-lg text-gray-800 tracking-tight leading-none mb-1">Net Asset</h3>
@@ -448,8 +475,8 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
 
             <div className="mt-10 mb-8 flex flex-col relative z-20">
                 <div className="flex items-baseline gap-1.5 flex-wrap">
-                    <p className={`text-xl font-black ${windowStats.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {windowStats.change >= 0 ? '+' : ''}${f1(windowStats.change)}
+                    <p className={`text-xl font-black ${windowStats.current >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {windowStats.current < 0 ? '-' : ''}${f1(Math.abs(windowStats.current))}
                     </p>
                     <span className={`text-[10px] font-bold ${windowStats.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {windowStats.change >= 0 ? '▲' : '▼'}{Math.abs(Math.round(windowStats.percent))}%
@@ -464,10 +491,20 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                         <div className="pointer-events-auto w-full h-full">
                             <ResponsiveContainer width="100%" height="100%">
                                 <AreaChart data={allMonthlyBalances} margin={{ top: 10, right: 0, left: 0, bottom: 5 }}>
+                                    <defs>
+                                        <linearGradient id="assetSplitFill" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset={gradientOffset} stopColor="#10b981" stopOpacity={0.2} />
+                                            <stop offset={gradientOffset} stopColor="#ef4444" stopOpacity={0.2} />
+                                        </linearGradient>
+                                        <linearGradient id="assetSplitStroke" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset={gradientOffset} stopColor="#10b981" stopOpacity={1} />
+                                            <stop offset={gradientOffset} stopColor="#ef4444" stopOpacity={1} />
+                                        </linearGradient>
+                                    </defs>
                                     <CartesianGrid vertical={false} strokeDasharray="3 3" />
                                     <XAxis dataKey="name" tick={{fontSize: 8, fontWeight: 700, fill: '#cbd5e1'}} tickFormatter={(v) => v.charAt(0)} stroke="none" dy={5} interval={0} padding={{ left: 0, right: 0 }} />
                                     <YAxis hide domain={assetChartDomain} />
-                                    <Area type="monotone" dataKey={assetView} stroke="#3b82f6" strokeWidth={3} fillOpacity={0.1} fill="#3b82f6" isAnimationActive={false} dot={{ r: 3, fill: '#94a3b8', strokeWidth: 0 }} />
+                                    <Area type="monotone" dataKey={assetView} stroke="url(#assetSplitStroke)" strokeWidth={3} fillOpacity={1} fill="url(#assetSplitFill)" isAnimationActive={false} dot={{ r: 3, fill: '#94a3b8', strokeWidth: 0 }} />
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
@@ -484,7 +521,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             </div>
         </div>
 
-        {/* Improved Spending Card with dynamic Y-axis and Centered Pop-up */}
         <div className="bg-white p-6 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 overflow-visible select-none">
              <div className="flex justify-between items-end mb-8 relative z-30 bg-white">
                 <div className="flex flex-col min-w-0 flex-1">
@@ -506,52 +542,27 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                         <span className="text-xs font-black text-gray-900 tracking-tight">Viewing Analysis</span>
                         <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">{currentViewRangeLabel}</span>
                     </div>
-                    <button 
-                        onClick={() => { setDateOffset(0); if(spendingScrollRef.current) spendingScrollRef.current.scrollLeft = spendingScrollRef.current.scrollWidth; }} 
-                        className="text-xs font-black text-blue-600 px-5 py-2.5 bg-blue-50 rounded-2xl active:scale-95 transition-transform"
-                    >
-                        Today
-                    </button>
+                    <button onClick={() => { setDateOffset(0); if(spendingScrollRef.current) spendingScrollRef.current.scrollLeft = spendingScrollRef.current.scrollWidth; }} className="text-xs font-black text-blue-600 px-5 py-2.5 bg-blue-50 rounded-2xl active:scale-95 transition-transform">Today</button>
                   </div>
                   
                   <div className="chart-container-relative-box overflow-visible">
                     <div ref={spendingScrollRef} onScroll={handleSpendingScroll} onMouseDown={(e) => onMouseDown(e, spendingScrollRef)} onMouseLeave={onMouseLeave} onMouseUp={onMouseUp} onMouseMove={(e) => onMouseMove(e, spendingScrollRef)} className="scrollable-chart-layer no-scrollbar" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x', overflowX: 'auto', overflowY: 'visible' }}>
-                        <div style={{ 
-                            // WIDTH LOGIC: Exactly 12 columns visible for Y view (12 bars per width), 7 for W view
-                            width: `${Math.max(100, (spendingChartData.length / (period === 'W' ? 7 : 12)) * 100)}%`, 
-                            minWidth: '100%', 
-                            height: '100%' 
-                        }} className="relative block pointer-events-none">
+                        <div style={{ width: `${Math.max(100, (spendingChartData.length / (period === 'W' ? 7 : 12)) * 100)}%`, minWidth: '100%', height: '100%' }} className="relative block pointer-events-none">
                             <div className="pointer-events-auto w-full h-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={spendingChartData} margin={{ top: 0, right: 0, left: 5, bottom: 0 }} barGap={6}
-                                        onMouseDown={(data: any) => {
-                                            if (data && data.activePayload) {
-                                                setActivePopupData({ active: true, payload: data.activePayload });
-                                            }
-                                        }}
-                                    >
+                                    <BarChart data={spendingChartData} margin={{ top: 0, right: 0, left: 5, bottom: 0 }} barGap={6} onMouseDown={(data: any) => { if (data && data.activePayload) setActivePopupData({ active: true, payload: data.activePayload }); }}>
                                         <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f1f5f9" />
                                         <XAxis dataKey="name" tick={{fontSize: 9, fontWeight: 700, fill: '#94a3b8'}} stroke="none" dy={10} interval={0} />
                                         <YAxis hide domain={[0, visibleMax]} />
                                         <Tooltip content={() => null} cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }} />
                                         {[...expenseCategories, "Uncategorized Items"].map(cat => (
-                                          <Bar 
-                                            key={cat} 
-                                            dataKey={cat} 
-                                            stackId="a" 
-                                            fill={expenseColors[cat] || '#ccc'} 
-                                            name={cat} 
-                                            isAnimationActive={false} 
-                                            barSize={period === 'W' ? 28 : 20} 
-                                          />
+                                          <Bar key={cat} dataKey={cat} stackId="a" fill={expenseColors[cat] || '#ccc'} name={cat} isAnimationActive={false} barSize={period === 'W' ? 28 : 20} />
                                         ))}
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
                         </div>
                     </div>
-                    {/* Fixed Y-Axis Overlay - Scaled with visibleMax */}
                     <div className="static-y-axis-overlay">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={spendingChartData} margin={{ top: 0, right: 4, left: 0, bottom: 0 }}>
@@ -577,10 +588,8 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             </div>
         </div>
 
-        {/* Centered Interactive Analysis Pop-up */}
         {activePopupData && <CenteredAnalysisPopup active={activePopupData.active} payload={activePopupData.payload} />}
 
-       {/* Monthly Flow Card */}
        <div className="bg-white p-6 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 overflow-visible select-none">
           <div className="flex justify-between items-start mb-8 relative z-30 bg-white">
              <div className="flex flex-col min-w-0 flex-1">
