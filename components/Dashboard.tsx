@@ -122,22 +122,41 @@ const Dashboard: React.FC<DashboardProps> = ({
   const renderSection = (title: 'Income' | 'Expenses' | 'Savings', categories: string[], headerColor: string) => {
     const sectionKey = title.toLowerCase() as 'income' | 'expenses' | 'savings';
     const isExpanded = expandedSections[sectionKey];
+    const type = sectionKey === 'income' ? 'income' : sectionKey === 'expenses' ? 'expense' : 'investment';
 
+    // 1. Calculate items for defined categories
     const validItems = categories
         .map(cat => ({ name: cat, value: Math.abs(spendingMap[cat] || 0) }))
         .filter(item => item.value > 0);
     
-    validItems.sort((a, b) => b.value - a.value);
-    const top5 = validItems.slice(0, 5);
-    const othersValue = validItems.slice(5).reduce((sum, item) => sum + item.value, 0);
-    
-    const chartData = [...top5];
-    if (othersValue > 0) {
-        chartData.push({ name: 'Others', value: othersValue });
+    // 2. Identify "Stray" transactions (type matches but category is not in list)
+    const strayTxs = filteredTransactions.filter(t => 
+        t.type === type && !categories.includes(t.category)
+    );
+    const strayValue = strayTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+    // 3. Build detailed list for display
+    const detailedCategories = [...categories];
+    const hasStray = strayValue > 0;
+    // We'll treat "Others" as a special catch-all if it's not already in the list
+    const catchAllName = "Others / Uncategorized";
+    if (hasStray && !categories.includes(catchAllName)) {
+        // We don't push it to the actual array because we handle it specially below
     }
+
+    // Pie chart items
+    const chartItems = [...validItems];
+    if (hasStray) chartItems.push({ name: 'Uncategorized', value: strayValue });
+    
+    chartItems.sort((a, b) => b.value - a.value);
+    const top5 = chartItems.slice(0, 5);
+    const othersPieValue = chartItems.slice(5).reduce((sum, item) => sum + item.value, 0);
+    
+    const finalChartData = [...top5];
+    if (othersPieValue > 0) finalChartData.push({ name: 'Others', value: othersPieValue });
     
     const chartColors = title === 'Income' ? INCOME_CHART_COLORS : (title === 'Expenses' ? EXPENSE_CHART_COLORS : INVESTMENT_CHART_COLORS);
-    const totalTracked = categories.reduce((sum, cat) => sum + Math.abs(spendingMap[cat] || 0), 0);
+    const totalTracked = filteredTransactions.filter(t => t.type === type).reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
     return (
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-6 border border-gray-200">
@@ -152,23 +171,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <div className="w-full h-48 sm:h-56">
                   <ResponsiveContainer>
                     <PieChart>
-                      <Pie 
-                        data={chartData} 
-                        dataKey="value" 
-                        nameKey="name" 
-                        cx="50%" 
-                        cy="50%" 
-                        innerRadius="60%" 
-                        outerRadius="85%" 
-                        paddingAngle={4}
-                      >
-                        {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />)}
+                      <Pie data={finalChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="60%" outerRadius="85%" paddingAngle={4}>
+                        {finalChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />)}
                       </Pie>
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
                 <div className="w-full grid grid-cols-2 gap-x-4 gap-y-2 mt-2">
-                    {chartData.map((entry, index) => (
+                    {finalChartData.map((entry, index) => (
                         <div key={entry.name} className="flex items-center justify-between text-[10px] sm:text-xs">
                             <div className="flex items-center min-w-0">
                                <span className="w-2 h-2 rounded-full mr-1.5 shrink-0" style={{ backgroundColor: chartColors[index % chartColors.length] }}></span>
@@ -180,9 +190,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               </>
             ) : (
-              <div className="h-32 flex items-center justify-center text-gray-300 text-sm font-medium italic">
-                No data for this period
-              </div>
+              <div className="h-32 flex items-center justify-center text-gray-300 text-sm font-medium italic">No data for this period</div>
             )}
         </div>
 
@@ -200,39 +208,26 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <span>Category / Progress</span>
                 <span>Tracked / Budget</span>
             </div>
+            {/* Defined Categories */}
             {categories.map(cat => {
               const tracked = spendingMap[cat] || 0;
               const budget = (baseCategoryBudgets[cat] || 0) * budgetMultiplier;
               const percent = budget > 0 ? (Math.abs(tracked) / budget) * 100 : 0;
               const isDrilledDown = expandedCategories[`${sectionKey}-${cat}`];
-              
-              const barColor = percent > 100 ? 'bg-red-500' :
-                               title === 'Income' ? 'bg-green-500' :
-                               title === 'Expenses' ? 'bg-red-600' : 'bg-blue-600';
+              const barColor = percent > 100 ? 'bg-red-500' : title === 'Income' ? 'bg-green-500' : title === 'Expenses' ? 'bg-red-600' : 'bg-blue-600';
+              const activeBg = title === 'Income' ? 'bg-green-100' : title === 'Expenses' ? 'bg-red-100' : 'bg-blue-100';
+              const childBg = title === 'Income' ? 'bg-green-50/60' : title === 'Expenses' ? 'bg-red-50/60' : 'bg-blue-50/60';
+              const catTransactions = filteredTransactions.filter(t => t.category === cat && t.type === type);
 
-              // Stronger background colors for expanded categories
-              const activeBg = title === 'Income' ? 'bg-green-100' :
-                               title === 'Expenses' ? 'bg-red-100' : 'bg-blue-100';
-
-              // Lighter background colors for sub-items
-              const childBg = title === 'Income' ? 'bg-green-50/60' :
-                              title === 'Expenses' ? 'bg-red-50/60' : 'bg-blue-50/60';
-
-              const catTransactions = filteredTransactions.filter(t => t.category === cat);
+              if (tracked === 0 && budget === 0) return null;
 
               return (
                 <div key={cat} className="flex flex-col border-b border-gray-100 last:border-0">
-                  {/* Category Summary Row */}
-                  <div 
-                    onClick={() => toggleCategoryDrilldown(`${sectionKey}-${cat}`)}
-                    className={`flex justify-between items-center py-4 px-4 transition-colors cursor-pointer ${isDrilledDown ? activeBg : 'hover:bg-white/50'}`}
-                  >
+                  <div onClick={() => toggleCategoryDrilldown(`${sectionKey}-${cat}`)} className={`flex justify-between items-center py-4 px-4 transition-colors cursor-pointer ${isDrilledDown ? activeBg : 'hover:bg-white/50'}`}>
                     <div className="flex flex-col flex-1 pr-4 min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
                            <span className="font-bold text-gray-800 text-sm leading-tight">{cat}</span>
-                           <span className="text-[10px] text-gray-500 font-bold bg-white/50 px-1.5 rounded-md border border-gray-100">
-                             {catTransactions.length} items
-                           </span>
+                           {catTransactions.length > 0 && <span className="text-[10px] text-gray-500 font-bold bg-white/50 px-1.5 rounded-md border border-gray-100">{catTransactions.length} items</span>}
                            <svg className={`w-3 h-3 text-gray-400 transition-transform ${isDrilledDown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
                         </div>
                         <div className="w-full bg-gray-200/50 rounded-full h-1 mt-2 max-w-[140px]">
@@ -244,32 +239,61 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">/ {budget > 0 ? Math.round(budget).toLocaleString() : '--'}</span>
                     </div>
                   </div>
-
-                  {/* Hierarchical Transaction Drilldown with increased indentation (tab spacing) */}
                   {isDrilledDown && (
-                    <div className={`divide-y divide-white/50`}>
-                        {catTransactions.length > 0 ? (
-                          catTransactions.map((tx, idx) => (
+                    <div className="divide-y divide-white/50">
+                        {catTransactions.length > 0 ? catTransactions.map(tx => (
                             <div key={tx.id} className={`flex justify-between items-center py-3 pl-12 pr-4 ${childBg}`}>
                                 <div className="flex flex-col min-w-0">
-                                    <span className="text-[11px] font-bold text-gray-800 truncate">
-                                        {tx.note || format(new Date(tx.date), 'MMMM d, yyyy')}
-                                    </span>
+                                    <span className="text-[11px] font-bold text-gray-800 truncate">{tx.note || format(new Date(tx.date), 'MMMM d, yyyy')}</span>
                                     {tx.note && <span className="text-[9px] text-gray-500 font-semibold">{format(new Date(tx.date), 'MMM d, yyyy')}</span>}
                                 </div>
                                 <span className={`text-[11px] font-mono font-bold shrink-0 ml-4 ${tx.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
                                     {tx.type === 'income' ? '+' : ''}{Math.abs(tx.amount).toLocaleString()}
                                 </span>
                             </div>
-                          ))
-                        ) : (
-                          <div className={`py-4 pl-12 pr-4 text-[10px] text-gray-400 italic ${childBg}`}>No transactions found</div>
-                        )}
+                        )) : <div className={`py-4 pl-12 pr-4 text-[10px] text-gray-400 italic ${childBg}`}>No transactions found</div>}
                     </div>
                   )}
                 </div>
               );
             })}
+
+            {/* Virtual Stray / Others Row */}
+            {hasStray && (
+               <div className="flex flex-col border-t-2 border-dashed border-gray-100">
+                  <div 
+                    onClick={() => toggleCategoryDrilldown(`${sectionKey}-virtual-others`)} 
+                    className={`flex justify-between items-center py-4 px-4 transition-colors cursor-pointer bg-gray-50/80 ${expandedCategories[`${sectionKey}-virtual-others`] ? 'bg-blue-50' : 'hover:bg-gray-100'}`}
+                  >
+                    <div className="flex flex-col flex-1 pr-4 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                           <span className="font-bold text-blue-800 text-sm leading-tight italic">Uncategorized Others</span>
+                           <span className="text-[10px] text-blue-500 font-bold bg-white/50 px-1.5 rounded-md border border-blue-100">{strayTxs.length} items</span>
+                           <svg className={`w-3 h-3 text-blue-400 transition-transform ${expandedCategories[`${sectionKey}-virtual-others`] ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                        </div>
+                    </div>
+                    <div className="flex flex-col items-end shrink-0">
+                        <span className="font-mono font-bold text-blue-900 text-sm">${strayValue.toLocaleString()}</span>
+                        <span className="text-[9px] text-blue-400 font-black uppercase tracking-tighter">Stray Items</span>
+                    </div>
+                  </div>
+                  {expandedCategories[`${sectionKey}-virtual-others`] && (
+                    <div className="divide-y divide-white/50 bg-blue-50/40">
+                        {strayTxs.map(tx => (
+                            <div key={tx.id} className="flex justify-between items-center py-3 pl-12 pr-4">
+                                <div className="flex flex-col min-w-0">
+                                    <span className="text-[11px] font-bold text-gray-800 truncate">[{tx.category}] {tx.note || "No description"}</span>
+                                    <span className="text-[9px] text-gray-500 font-semibold">{format(new Date(tx.date), 'MMM d, yyyy')}</span>
+                                </div>
+                                <span className={`text-[11px] font-mono font-bold shrink-0 ml-4 ${tx.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
+                                    {tx.type === 'income' ? '+' : ''}{Math.abs(tx.amount).toLocaleString()}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                  )}
+               </div>
+            )}
           </div>
         )}
       </div>
@@ -298,50 +322,24 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
-            <button 
-              onClick={handlePrev} 
-              className="w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-600 active:scale-90 transition-transform"
-            >
+            <button onClick={handlePrev} className="w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-600 active:scale-90 transition-transform">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <button 
-              onClick={handleNext} 
-              className="w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-600 active:scale-90 transition-transform"
-            >
+            <button onClick={handleNext} className="w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-600 active:scale-90 transition-transform">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
-
-          <div className="text-center">
-             <p className="text-sm font-extrabold text-gray-800 tracking-tight">{periodLabel}</p>
-          </div>
-
-          <button 
-            onClick={jumpToToday}
-            disabled={viewTimeFrame === 'cumulative' || (viewTimeFrame === 'monthly' ? isSameMonth(new Date(), viewDate) : isSameDay(new Date(), viewDate))}
-            className="text-[10px] font-bold text-blue-600 uppercase tracking-widest disabled:opacity-30 px-2 py-1 bg-blue-50 rounded-md"
-          >
-            Today
-          </button>
+          <div className="text-center"><p className="text-sm font-extrabold text-gray-800 tracking-tight">{periodLabel}</p></div>
+          <button onClick={jumpToToday} disabled={viewTimeFrame === 'cumulative' || (viewTimeFrame === 'monthly' ? isSameMonth(new Date(), viewDate) : isSameDay(new Date(), viewDate))} className="text-[10px] font-bold text-blue-600 uppercase tracking-widest disabled:opacity-30 px-2 py-1 bg-blue-50 rounded-md">Today</button>
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 to-blue-500"></div>
-        <p className="text-[10px] text-gray-400 font-extrabold uppercase tracking-[0.2em] mb-1">
-            Net Balance
-        </p>
-        <p className={`text-3xl font-black tracking-tighter ${netBalance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-          {netBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-        </p>
+        <p className="text-[10px] text-gray-400 font-extrabold uppercase tracking-[0.2em] mb-1">Net Balance</p>
+        <p className={`text-3xl font-black tracking-tighter ${netBalance >= 0 ? 'text-green-600' : 'text-red-500'}`}>{netBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</p>
         <div className="flex justify-center gap-4 mt-3 pt-3 border-t border-gray-50">
-            <div className="text-left">
-                <span className="block text-[8px] text-gray-400 font-bold uppercase">Income</span>
-                <span className="font-mono font-bold text-green-600 text-xs">${totalIncome.toLocaleString()}</span>
-            </div>
-            <div className="text-left">
-                <span className="block text-[8px] text-gray-400 font-bold uppercase">Expenses</span>
-                <span className="font-mono font-bold text-red-500 text-xs">${totalExpenses.toLocaleString()}</span>
-            </div>
+            <div className="text-left"><span className="block text-[8px] text-gray-400 font-bold uppercase">Income</span><span className="font-mono font-bold text-green-600 text-xs">${totalIncome.toLocaleString()}</span></div>
+            <div className="text-left"><span className="block text-[8px] text-gray-400 font-bold uppercase">Expenses</span><span className="font-mono font-bold text-red-500 text-xs">${totalExpenses.toLocaleString()}</span></div>
         </div>
       </div>
 

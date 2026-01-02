@@ -76,15 +76,14 @@ export const fetchTransactions = async (
             const catNorm = normalize(c);
             if (!catNorm) return false;
             
-            // If the category has an icon, it acts as a wildcard
             const hasIcon = !!categoryIcons[c];
             if (hasIcon) {
                 return inputNorm.includes(catNorm) || catNorm.includes(inputNorm);
             }
-            // If no icon, still check for exact normalized match
             return inputNorm === catNorm;
         });
 
+        // If no match found among known categories, return "Others"
         return wildcardMatch || "Others";
     };
 
@@ -104,9 +103,7 @@ export const fetchTransactions = async (
 
         return rows.slice(1).map((row, idx) => {
             if (row.length < 2) return null;
-            
             const looksLikeDate = (val: string) => /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(val) || /^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}/.test(val);
-
             let amountStr = "";
             if (amountIdx > -1 && row[amountIdx]) amountStr = row[amountIdx];
             else {
@@ -114,15 +111,12 @@ export const fetchTransactions = async (
                 else if (row[1] && !looksLikeDate(row[1])) amountStr = row[1];
             }
             amountStr = amountStr.replace(/[^0-9.-]+/g,"");
-
             let dateStr = "";
             if (dateIdx > -1 && row[dateIdx]) dateStr = row[dateIdx];
             else if (timestampIdx > -1 && row[timestampIdx]) dateStr = row[timestampIdx];
-            
             const isoDate = parseDateAsHK(dateStr);
             const rawCat = catIdx > -1 ? row[catIdx] : row[3];
             const category = findMatch(rawCat || "");
-            
             let stableId = `csv-${idx}-${isoDate}-${amountStr}`;
             if (row[0] && row[0].length > 10) stableId = `form-${row[0].replace(/[^a-zA-Z0-9]/g, '')}`;
 
@@ -139,7 +133,6 @@ export const fetchTransactions = async (
     } else {
         const data = await res.json();
         const items = Array.isArray(data) ? data : (data.data || []);
-        
         return items.map((d: any) => {
             const cat = findMatch(d.category || "Others");
             return {

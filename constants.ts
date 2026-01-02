@@ -14,7 +14,10 @@ export const DEFAULT_INVESTMENT_CATEGORIES = [
   "Long-Term Stock", "SPY", "Day Trading Stocks", "Retirement Account", "Emergency Fund"
 ];
 
-// This function is now pure, relying on passed-in arguments
+/**
+ * Determines transaction type based on category.
+ * If 'Others' is passed, it typically falls to 'expense' unless context is provided.
+ */
 export const getTransactionType = (
   category: string, 
   incomeCategories: string[], 
