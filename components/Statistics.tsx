@@ -21,13 +21,6 @@ const startOfWeek = (date: Date) => {
     return d;
 };
 
-const startOfMonth = (date: Date) => {
-    const d = new Date(date);
-    d.setDate(1);
-    d.setHours(0, 0, 0, 0);
-    return d;
-};
-
 const startOfYear = (date: Date) => {
     const d = new Date(date);
     d.setMonth(0, 1);
@@ -161,33 +154,54 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     return colorMap;
   }, [expenseCategories]);
 
-  const flowOverTimeData = useMemo(() => {
-    const yearStart = startOfYear(new Date(monthlyFlowYear, 0, 1));
-    const yearEnd = endOfYear(new Date(monthlyFlowYear, 11, 31));
-    const monthlyDataMap = new Map<string, { name: string, income: number, expense: number, investment: number }>();
-    const yearMonths = eachMonthOfInterval({ start: yearStart, end: yearEnd });
-    yearMonths.forEach(m => monthlyDataMap.set(format(m, 'MMM'), { name: format(m, 'MMM'), income: 0, expense: 0, investment: 0 }));
-    sortedTransactions.forEach(curr => {
-        const txDate = new Date(curr.date);
-        if (txDate >= yearStart && txDate <= yearEnd) {
-            const month = format(txDate, 'MMM');
-            const monthEntry = monthlyDataMap.get(month);
-            if (monthEntry) {
-                if (curr.type === 'income') monthEntry.income += curr.amount;
-                else if (curr.type === 'expense') monthEntry.expense += Math.abs(curr.amount);
-                else if (curr.type === 'investment') monthEntry.investment += Math.abs(curr.amount);
-            }
-        }
-    });
-    return Array.from(monthlyDataMap.values());
-  }, [sortedTransactions, monthlyFlowYear]);
+  // ABSOLUTELY OPAQUE CUSTOM TOOLTIP
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const validItems = payload.filter((item: any) => item.value > 0);
+      if (validItems.length === 0) return null;
+
+      // Sort items by value for better readability
+      const sortedItems = [...validItems].sort((a: any, b: any) => b.value - a.value);
+
+      return (
+        <div 
+          className="rounded-2xl border border-gray-100 flex flex-col gap-2 min-w-[220px]"
+          style={{ 
+            backgroundColor: '#FFFFFF', // Solid pure white
+            opacity: 1, 
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0,0,0,0.1)',
+            padding: '16px',
+            zIndex: 9999999, // Massive z-index
+            pointerEvents: 'none',
+            position: 'relative',
+            mixBlendMode: 'normal',
+          }}
+        >
+          <p className="text-sm font-black text-gray-900 border-b border-gray-100 pb-2 mb-2">{label}</p>
+          <div className="flex flex-col gap-2">
+            {sortedItems.map((item: any, index: number) => (
+              <div key={index} className="flex items-center justify-between gap-4">
+                <span className="text-[11px] font-bold truncate pr-2" style={{ color: item.color }}>
+                  {getDisplayCategoryName(item.name)}
+                </span>
+                <span className="text-[11px] font-mono font-black text-gray-900">
+                  ${item.value.toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   const TidyLegend = (props: any) => {
     const { payload } = props;
     if (!payload || payload.length === 0) return null;
 
     return (
-      <div className="mt-8 px-2">
+      <div className="mt-8 px-2 relative z-0">
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-y-3 gap-x-2">
           {payload.map((entry: any, index: number) => (
             <div key={`item-${index}`} className="flex items-start gap-2 min-w-0">
@@ -281,8 +295,44 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     );
   };
 
+  const flowOverTimeData = useMemo(() => {
+    const yearStart = startOfYear(new Date(monthlyFlowYear, 0, 1));
+    const yearEnd = endOfYear(new Date(monthlyFlowYear, 11, 31));
+    const monthlyDataMap = new Map<string, { name: string, income: number, expense: number, investment: number }>();
+    const yearMonths = eachMonthOfInterval({ start: yearStart, end: yearEnd });
+    yearMonths.forEach(m => monthlyDataMap.set(format(m, 'MMM'), { name: format(m, 'MMM'), income: 0, expense: 0, investment: 0 }));
+    sortedTransactions.forEach(curr => {
+        const txDate = new Date(curr.date);
+        if (txDate >= yearStart && txDate <= yearEnd) {
+            const month = format(txDate, 'MMM');
+            const monthEntry = monthlyDataMap.get(month);
+            if (monthEntry) {
+                if (curr.type === 'income') monthEntry.income += curr.amount;
+                else if (curr.type === 'expense') monthEntry.expense += Math.abs(curr.amount);
+                else if (curr.type === 'investment') monthEntry.investment += Math.abs(curr.amount);
+            }
+        }
+    });
+    return Array.from(monthlyDataMap.values());
+  }, [sortedTransactions, monthlyFlowYear]);
+
   return (
     <div className="space-y-6 pb-24">
+       {/* FORCE OPAQUE TOOLTIP CSS INJECTION */}
+       <style dangerouslySetInnerHTML={{ __html: `
+         .recharts-tooltip-wrapper {
+           opacity: 1 !important;
+           z-index: 10000000 !important;
+           visibility: visible !important;
+           pointer-events: none !important;
+           mix-blend-mode: normal !important;
+         }
+         .recharts-legend-wrapper {
+           z-index: 1 !important;
+           pointer-events: auto !important;
+         }
+       `}} />
+
        <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex justify-between items-start mb-4">
                 <h3 className="font-semibold text-gray-500 text-sm leading-tight">Net Asset<br/>Change</h3>
@@ -312,14 +362,26 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                         </defs>
                         <XAxis dataKey="name" tick={{fontSize: 12}} stroke="#9ca3af" axisLine={false} tickLine={false} />
                         <YAxis tick={{fontSize: 12}} stroke="#9ca3af" tickFormatter={(v) => `$${Number(v/1000).toFixed(0)}k`} axisLine={false} tickLine={false} width={40}/>
-                        <Tooltip formatter={(v: number) => `$${v.toLocaleString()}`} />
-                        <Area type="monotone" dataKey="balance" stroke={assetView === 'wealth' ? "url(#colorWealthSplit)" : "#007AFF"} strokeWidth={2.5} fillOpacity={0.4} fill={assetView === 'wealth' ? "url(#colorWealthSplit)" : "#007AFF"} />
+                        <Tooltip 
+                            formatter={(v: number) => `$${v.toLocaleString()}`} 
+                            isAnimationActive={false}
+                            contentStyle={{ borderRadius: '12px', opacity: 1, backgroundColor: '#ffffff', zIndex: 99999 }}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="balance" 
+                          stroke={assetView === 'wealth' ? "url(#colorWealthSplit)" : "#007AFF"} 
+                          strokeWidth={2.5} 
+                          fillOpacity={0.4} 
+                          fill={assetView === 'wealth' ? "url(#colorWealthSplit)" : "#007AFF"} 
+                          isAnimationActive={false} 
+                        />
                     </AreaChart>
                 </ResponsiveContainer>
             </div>
         </div>
 
-        <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 overflow-visible">
              <div className="flex justify-between items-start mb-4">
                 <h3 className="font-semibold text-gray-500 text-sm leading-tight">Spending<br/>Analysis</h3>
                 <div className="flex items-center justify-end gap-x-2 gap-y-2 flex-wrap">
@@ -342,31 +404,34 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                     </span>
                     <button onClick={() => setDateOffset(p => p + 1)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors">&gt;</button>
                   </div>
-                  <div className="h-auto">
+                  <div className="h-auto relative">
                     <ResponsiveContainer width="100%" height={280}>
-                        <BarChart data={spendingChartData}>
-                            <XAxis dataKey="name" tick={{fontSize: 12}} stroke="#9ca3af" axisLine={false} tickLine={false} />
-                            <YAxis tick={{fontSize: 12}} stroke="#9ca3af" axisLine={false} tickLine={false} width={40} />
+                        <BarChart 
+                          key={`chart-${period}`} 
+                          data={spendingChartData} 
+                          margin={{ top: 20, right: 10, left: -10, bottom: 0 }}
+                          isAnimationActive={false}
+                        >
+                            <XAxis dataKey="name" tick={{fontSize: 11, fontWeight: 'bold'}} stroke="#9ca3af" axisLine={false} tickLine={false} />
+                            <YAxis tick={{fontSize: 10}} stroke="#9ca3af" axisLine={false} tickLine={false} width={45} tickFormatter={(v) => v >= 1000 ? `$${(v/1000).toFixed(0)}k` : `$${v}`} />
                             <Tooltip 
-                                cursor={{fill: 'rgba(243, 244, 246, 0.4)'}} 
-                                formatter={(value: number, name: string) => {
-                                    if (value <= 0) return [null, null];
-                                    return [`$${value.toLocaleString()}`, getDisplayCategoryName(name)];
-                                }}
-                                contentStyle={{ 
-                                    borderRadius: '16px', 
-                                    border: '1px solid #f3f4f6', 
-                                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                                    backgroundColor: '#ffffff',
-                                    padding: '16px',
-                                    zIndex: 1000,
-                                    opacity: 1
-                                }}
-                                itemStyle={{ fontWeight: 'bold', fontSize: '12px', padding: '2px 0' }}
-                                labelStyle={{ fontWeight: '900', color: '#111827', marginBottom: '10px', fontSize: '14px', borderBottom: '1.5px solid #f3f4f6', paddingBottom: '6px' }}
+                                content={<CustomTooltip />} 
+                                cursor={{ fill: 'rgba(0, 0, 0, 0.04)' }} 
+                                isAnimationActive={false} 
+                                wrapperStyle={{ zIndex: 10000000, opacity: 1, pointerEvents: 'none' }}
+                                allowEscapeViewBox={{ x: true, y: true }}
                             />
                             <Legend content={<TidyLegend />} />
-                            {expenseCategories.map(cat => <Bar key={cat} dataKey={cat} stackId="a" fill={expenseColors[cat] || '#ccc'} name={cat} />)}
+                            {expenseCategories.map(cat => (
+                                <Bar 
+                                    key={cat} 
+                                    dataKey={cat} 
+                                    stackId="a" 
+                                    fill={expenseColors[cat] || '#ccc'} 
+                                    name={cat} 
+                                    isAnimationActive={false} 
+                                />
+                            ))}
                         </BarChart>
                     </ResponsiveContainer>
                  </div>
@@ -390,16 +455,17 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                 <XAxis dataKey="name" tick={{fontSize: 12}} stroke="#9ca3af" axisLine={false} tickLine={false} />
                 <YAxis tick={{fontSize: 12}} stroke="#9ca3af" axisLine={false} tickLine={false} width={40} />
                 <Tooltip 
+                  isAnimationActive={false}
                   formatter={(v: number) => `$${v.toLocaleString()}`} 
                   contentStyle={{ 
                     borderRadius: '12px', border: '1px solid #f3f4f6', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', 
-                    backgroundColor: '#fff', opacity: 1
+                    backgroundColor: '#ffffff', opacity: 1, zIndex: 9999
                   }} 
                 />
                 <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}}/>
-                <Bar dataKey="income" fill="#34C759" name="Income" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="expense" fill="#FF3B30" name="Expenses" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="investment" fill="#007AFF" name="Investments" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="income" fill="#34C759" name="Income" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                <Bar dataKey="expense" fill="#FF3B30" name="Expenses" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                <Bar dataKey="investment" fill="#007AFF" name="Investments" radius={[4, 4, 0, 0]} isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
           </div>
