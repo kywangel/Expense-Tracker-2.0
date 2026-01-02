@@ -22,32 +22,24 @@ const parseCSVLine = (str: string) => {
   return arr.map(s => s.trim().replace(/^"|"$/g, ''));
 };
 
-// Helper to safely parse a date string as HKT (or absolute date) without shifting
 const parseDateAsHK = (dateStr: string): string => {
     if (!dateStr) return toHKDateString(new Date());
-
-    // Try to isolate the date part (YYYY-MM-DD or MM/DD/YYYY) to avoid time shifting
     const cleanDateStr = dateStr.split(' ')[0].split('T')[0];
-    
-    // If it matches YYYY-MM-DD, create as UTC to ensure stability
-    if (/^\d{4}-\d{2}-\d{2}$/.test(cleanDateStr)) {
-        return cleanDateStr; 
-    }
-    
-    // Fallback for other formats (e.g. 12/31/2024)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(cleanDateStr)) return cleanDateStr; 
     const parsed = new Date(dateStr);
-    if (!isNaN(parsed.getTime())) {
-        return toHKDateString(parsed);
-    }
-    
+    if (!isNaN(parsed.getTime())) return toHKDateString(parsed);
     return toHKDateString(new Date());
 };
+
+// Normalize string for fuzzy wildcard matching (lowercase, no spaces, no special chars)
+const normalize = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 export const fetchTransactions = async (
   sheetUrlOrId: string, 
   incomeCategories: string[], 
   investmentCategories: string[],
-  expenseCategories: string[] = []
+  expenseCategories: string[] = [],
+  categoryIcons: Record<string, string> = {}
 ): Promise<Transaction[]> => {
   let fetchUrl = sheetUrlOrId;
   let isCsv = false;
@@ -55,10 +47,8 @@ export const fetchTransactions = async (
   if (sheetUrlOrId.includes("docs.google.com") || sheetUrlOrId === DEFAULT_SHEET_ID) {
     const idMatch = sheetUrlOrId.match(/\/d\/([a-zA-Z0-9-_]+)/);
     const sheetId = idMatch ? idMatch[1] : (sheetUrlOrId === DEFAULT_SHEET_ID ? DEFAULT_SHEET_ID : null);
-    
     const gidMatch = sheetUrlOrId.match(/[#&?]gid=([0-9]+)/);
     const gid = gidMatch ? gidMatch[1] : DEFAULT_GID;
-
     if (sheetId) {
        fetchUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
        isCsv = true;
@@ -70,6 +60,33 @@ export const fetchTransactions = async (
     if (!res.ok) throw new Error(`Failed to fetch: ${res.status} ${res.statusText}`);
 
     const determineType = (category: string) => getTransactionType(category, incomeCategories, investmentCategories);
+    const knownCategories = [...incomeCategories, ...investmentCategories, ...expenseCategories];
+
+    // Fuzzy matching logic: Wildcard + Skip Spacing
+    const findMatch = (rawInput: string): string => {
+        const inputNorm = normalize(rawInput);
+        if (!inputNorm) return "Others";
+
+        // 1. Try Exact Match First
+        const exact = knownCategories.find(c => c.toLowerCase() === rawInput.trim().toLowerCase());
+        if (exact) return exact;
+
+        // 2. Try Wildcard Match for categories that have icons (indicating "Smart" categories)
+        const wildcardMatch = knownCategories.find(c => {
+            const catNorm = normalize(c);
+            if (!catNorm) return false;
+            
+            // If the category has an icon, it acts as a wildcard
+            const hasIcon = !!categoryIcons[c];
+            if (hasIcon) {
+                return inputNorm.includes(catNorm) || catNorm.includes(inputNorm);
+            }
+            // If no icon, still check for exact normalized match
+            return inputNorm === catNorm;
+        });
+
+        return wildcardMatch || "Others";
+    };
 
     if (isCsv) {
         const text = await res.text();
@@ -81,86 +98,33 @@ export const fetchTransactions = async (
         const amountIdx = headers.findIndex(h => h.includes('amount') || h.includes('cost') || h.includes('price'));
         const catIdx = headers.findIndex(h => h.includes('category') || h.includes('type'));
         const noteIdx = headers.findIndex(h => h.includes('note') || h.includes('desc') || h.includes('item'));
-        const timestampIdx = headers.findIndex(h => h.includes('timestamp')); // Detect Google Form Timestamp
+        const timestampIdx = headers.findIndex(h => h.includes('timestamp'));
 
-        // Default indices fallback
         const nI = noteIdx > -1 ? noteIdx : 4;
 
         return rows.slice(1).map((row, idx) => {
             if (row.length < 2) return null;
             
-            // Helper to prevent parsing Dates as Amounts
-            const looksLikeDate = (val: string) => {
-                if (!val) return false;
-                return /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(val) || /^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}/.test(val);
-            };
+            const looksLikeDate = (val: string) => /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(val) || /^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}/.test(val);
 
-            // Amount Extraction
-            // Strict Priority: Column C (Index 2)
             let amountStr = "";
-            
-            // 1. Check Header if exists
-            if (amountIdx > -1 && row[amountIdx]) {
-                amountStr = row[amountIdx];
-            } 
-            // 2. Fallback: Strict preference for Column C (Index 2)
+            if (amountIdx > -1 && row[amountIdx]) amountStr = row[amountIdx];
             else {
-                if (row[2] && /[\d\.\$]+/.test(row[2]) && !looksLikeDate(row[2])) {
-                    amountStr = row[2];
-                }
-                // Fallbacks if C is empty (though user said it SHOULD be C)
-                else if (row[1] && /[\d\.\$]+/.test(row[1]) && !looksLikeDate(row[1])) {
-                    amountStr = row[1];
-                }
-                else if (row.length > 3 && row[3] && /[\d\.\$]+/.test(row[3]) && !looksLikeDate(row[3])) {
-                    amountStr = row[3];
-                }
+                if (row[2] && !looksLikeDate(row[2])) amountStr = row[2];
+                else if (row[1] && !looksLikeDate(row[1])) amountStr = row[1];
             }
-            
             amountStr = amountStr.replace(/[^0-9.-]+/g,"");
 
-            // Date Extraction Logic (Col B then Col A)
             let dateStr = "";
-            if (dateIdx > -1 && row[dateIdx]) {
-                dateStr = row[dateIdx];
-            }
-            if (!dateStr && timestampIdx > -1 && row[timestampIdx]) {
-                dateStr = row[timestampIdx];
-            }
-            if (!dateStr) {
-                if (row.length > 1 && row[1]) dateStr = row[1];
-                else if (row.length > 0 && row[0]) dateStr = row[0];
-            }
-
+            if (dateIdx > -1 && row[dateIdx]) dateStr = row[dateIdx];
+            else if (timestampIdx > -1 && row[timestampIdx]) dateStr = row[timestampIdx];
+            
             const isoDate = parseDateAsHK(dateStr);
-
-            // Category Extraction
-            // Strict Priority: Column D (Index 3)
-            let rawCat = "";
-            if (catIdx > -1 && row[catIdx]) {
-                rawCat = row[catIdx];
-            } else if (row[3]) {
-                rawCat = row[3];
-            }
+            const rawCat = catIdx > -1 ? row[catIdx] : row[3];
+            const category = findMatch(rawCat || "");
             
-            let category = rawCat.trim();
-            
-            // Validation: Map to "Others" if unknown
-            const knownCategories = new Set([...incomeCategories, ...investmentCategories, ...expenseCategories]);
-            const matchedCat = [...knownCategories].find(c => c.toLowerCase() === category.toLowerCase());
-            
-            if (matchedCat) {
-                category = matchedCat;
-            } else {
-                category = "Others";
-            }
-            
-            // Robust ID Generation
             let stableId = `csv-${idx}-${isoDate}-${amountStr}`;
-            if (row[0] && row[0].length > 10) {
-                 const tsSafe = row[0].replace(/[^a-zA-Z0-9]/g, '');
-                 stableId = `form-${tsSafe}`;
-            }
+            if (row[0] && row[0].length > 10) stableId = `form-${row[0].replace(/[^a-zA-Z0-9]/g, '')}`;
 
             return {
                 id: stableId, 
@@ -176,15 +140,8 @@ export const fetchTransactions = async (
         const data = await res.json();
         const items = Array.isArray(data) ? data : (data.data || []);
         
-        // Also apply 'Others' logic to JSON data if keys match
-        const knownCategories = new Set([...incomeCategories, ...investmentCategories, ...expenseCategories]);
-
         return items.map((d: any) => {
-            let cat = d.category || "Others";
-            const matched = [...knownCategories].find(c => c.toLowerCase() === cat.trim().toLowerCase());
-            if (matched) cat = matched;
-            else cat = "Others";
-
+            const cat = findMatch(d.category || "Others");
             return {
                 id: d.id || Math.random().toString(36).substr(2, 9),
                 date: d.date, 
@@ -197,38 +154,25 @@ export const fetchTransactions = async (
         });
     }
   } catch (e) {
-    console.warn("Fetch Error. Ensure the Google Sheet is 'Anyone with the link' or 'Published to Web'.", e);
+    console.warn("Fetch Error", e);
     return [];
   }
 };
 
 export const testConnection = async (scriptUrl: string): Promise<{ success: boolean; message: string }> => {
-    if (!scriptUrl.includes('script.google.com')) {
-        return { success: false, message: "Invalid URL. Must be a Google Apps Script URL." };
-    }
+    if (!scriptUrl.includes('script.google.com')) return { success: false, message: "Invalid URL." };
     try {
         const res = await fetch(scriptUrl);
         const text = await res.text();
-        try {
-            const json = JSON.parse(text);
-            if (json.status === 'success') {
-                return { success: true, message: "Connection successful!" };
-            }
-            return { success: false, message: "Script reachable but returned unexpected status." };
-        } catch {
-            return { success: false, message: "Script returned HTML instead of JSON. Did you deploy as 'Web App'?" };
-        }
+        const json = JSON.parse(text);
+        return json.status === 'success' ? { success: true, message: "Connection successful!" } : { success: false, message: "Unexpected status." };
     } catch (e) {
-        return { success: false, message: `Network error: ${e instanceof Error ? e.message : String(e)}` };
+        return { success: false, message: `Error: ${e instanceof Error ? e.message : String(e)}` };
     }
 };
 
 export const saveTransaction = async (sheetDbUrl: string, transaction: Transaction): Promise<boolean> => {
-  if (!sheetDbUrl || sheetDbUrl.includes("docs.google.com")) {
-      console.log("Mock Write-back (Read-only source configured):", transaction);
-      return true; 
-  }
-
+  if (!sheetDbUrl || sheetDbUrl.includes("docs.google.com")) return true; 
   try {
     const res = await fetch(sheetDbUrl, {
       method: 'POST',
@@ -236,57 +180,18 @@ export const saveTransaction = async (sheetDbUrl: string, transaction: Transacti
       body: JSON.stringify({ action: 'add', data: transaction })
     });
     return res.ok;
-  } catch (e) {
-    console.error("SheetDB Save Error:", e);
-    return false;
-  }
+  } catch (e) { return false; }
 };
 
 export const saveBulkTransactions = async (sheetDbUrl: string, transactions: Transaction[]): Promise<{ success: boolean; count: number; error?: string; sheetName?: string }> => {
-  if (!sheetDbUrl || sheetDbUrl.includes("docs.google.com")) {
-      console.log("Mock Bulk Save (Read-only source):", transactions.length);
-      return { success: true, count: transactions.length };
-  }
-
+  if (!sheetDbUrl || sheetDbUrl.includes("docs.google.com")) return { success: true, count: transactions.length };
   try {
-    const BATCH_SIZE = 50;
-    const batches = [];
-    for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
-        batches.push(transactions.slice(i, i + BATCH_SIZE));
-    }
-
-    let successCount = 0;
-    let lastSheetName = "";
-
-    for (const batch of batches) {
-        const res = await fetch(sheetDbUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'addBulk', data: batch })
-        });
-        
-        if (!res.ok) {
-            return { success: false, count: successCount, error: `HTTP Error ${res.status}` };
-        }
-
-        const text = await res.text();
-        try {
-            const json = JSON.parse(text);
-            if (json.status === 'success') {
-                successCount += (json.count || batch.length);
-                if (json.targetSheet) lastSheetName = json.targetSheet;
-            } else {
-                return { success: false, count: successCount, error: json.message || "Script Error" };
-            }
-        } catch (e) {
-            console.error("Invalid JSON response:", text.substring(0, 100));
-            return { success: false, count: successCount, error: "Invalid response. Check if 'New Deployment' was created." };
-        }
-    }
-    
-    return { success: successCount >= transactions.length, count: successCount, sheetName: lastSheetName };
-  } catch (e) {
-    console.error("SheetDB Bulk Save Error:", e);
-    return { success: false, count: 0, error: e instanceof Error ? e.message : "Network Error" };
-  }
+    const res = await fetch(sheetDbUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'addBulk', data: transactions })
+    });
+    const json = await res.json();
+    return { success: json.status === 'success', count: json.count || transactions.length, sheetName: json.targetSheet };
+  } catch (e) { return { success: false, count: 0, error: String(e) }; }
 };

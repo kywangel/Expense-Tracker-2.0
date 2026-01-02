@@ -1,10 +1,9 @@
 
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Transaction } from "../types";
 
-const apiKey = process.env.API_KEY || ''; // In a real app, strict env handling.
-const ai = new GoogleGenAI({ apiKey });
+// Initializing the GenAI client with API key from environment
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Helper to convert file to base64
 export const fileToGenerativePart = async (file: File): Promise<string> => {
@@ -28,8 +27,8 @@ export const fileToGenerativePart = async (file: File): Promise<string> => {
 
 export const analyzeStatement = async (base64Data: string, mimeType: string = "image/jpeg"): Promise<Partial<Transaction>[]> => {
   try {
-    // Switched to gemini-2.5-flash for better stability with large contexts/base64 payloads in browser
-    const modelId = "gemini-2.5-flash"; 
+    // Using gemini-3-flash-preview for multi-modal statement analysis
+    const modelId = "gemini-3-flash-preview"; 
     
     const response = await ai.models.generateContent({
       model: modelId,
@@ -64,6 +63,7 @@ export const analyzeStatement = async (base64Data: string, mimeType: string = "i
       }
     });
 
+    // Directly access text property from response
     if (response.text) {
       return JSON.parse(response.text);
     }
@@ -81,7 +81,7 @@ export const generateHabitSummary = async (transactions: Transaction[]): Promise
     const txSummary = transactions.slice(0, 50).map(t => `${t.date}: ${t.category} $${t.amount}`).join('\n');
     
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Here are my recent expenses:\n${txSummary}\n\nAnalyze my spending habits. Identify one key trend and suggest one actionable improvement for next month. Keep it short, friendly, and under 50 words.`,
     });
 
@@ -97,7 +97,7 @@ export const reconcileInvestment = async (netCashFlow: number, actualInvestmentC
     const diff = actualInvestmentChange - netCashFlow;
     
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `My calculated Net Cash Flow (Income - Expenses) is $${netCashFlow}. My Investment Portfolio changed by $${actualInvestmentChange}. The difference is $${diff}. Suggest 3 brief reasons why this discrepancy might exist (e.g., hidden fees, market gains, timing differences). Format as a bulleted list.`,
     });
 

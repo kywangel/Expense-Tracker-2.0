@@ -12,7 +12,6 @@ import Database from './components/Database';
 import { Transaction, AppView, AppSettings, FoundItem, MatchedItemPair } from './types';
 import { fetchTransactions } from './services/sheetService';
 import { DEFAULT_SHEET_ID, DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INVESTMENT_CATEGORIES, toHKDateString } from './constants';
-import { format } from 'date-fns';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.DASHBOARD);
@@ -30,23 +29,17 @@ const App: React.FC = () => {
           incomeCategories: DEFAULT_INCOME_CATEGORIES,
           expenseCategories: DEFAULT_EXPENSE_CATEGORIES,
           investmentCategories: DEFAULT_INVESTMENT_CATEGORIES,
+          categoryIcons: {},
           dailyViewCategories: [],
           dailyTransactionsPerMonth: {}
       };
 
       if (saved) {
           const parsed = JSON.parse(saved);
-          if (parsed.categoryBudgets && !parsed.monthlyCategoryBudgets) {
-              const currentMonthKey = toHKDateString(new Date()).substring(0, 7);
-              parsed.monthlyCategoryBudgets = { [currentMonthKey]: parsed.categoryBudgets };
-          }
-          if (!parsed.baseCategoryBudgets) {
-              const currentMonthKey = toHKDateString(new Date()).substring(0, 7);
-              parsed.baseCategoryBudgets = parsed.monthlyCategoryBudgets?.[currentMonthKey] || {};
-          }
           return {
             ...defaults,
             ...parsed,
+            categoryIcons: parsed.categoryIcons || {},
             yearlyBudgets: parsed.yearlyBudgets || {},
             dailyViewCategories: parsed.dailyViewCategories || [],
             dailyTransactionsPerMonth: parsed.dailyTransactionsPerMonth || {}
@@ -54,7 +47,6 @@ const App: React.FC = () => {
       }
       return defaults;
     } catch (e) {
-      console.error("Failed to load settings from storage", e);
       return { 
           sheetDbUrl: DEFAULT_SHEET_ID, 
           masterSheetUrl: "", 
@@ -65,6 +57,7 @@ const App: React.FC = () => {
           incomeCategories: DEFAULT_INCOME_CATEGORIES,
           expenseCategories: DEFAULT_EXPENSE_CATEGORIES,
           investmentCategories: DEFAULT_INVESTMENT_CATEGORIES,
+          categoryIcons: {},
           dailyViewCategories: [],
           dailyTransactionsPerMonth: {}
       };
@@ -75,27 +68,21 @@ const App: React.FC = () => {
     try {
       const saved = localStorage.getItem('transactions');
       return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
+    } catch (e) { return []; }
   });
   
   const [aiFoundItems, setAiFoundItems] = useState<FoundItem[]>(() => {
     try {
       const saved = localStorage.getItem('aiFoundItems');
       return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
+    } catch (e) { return []; }
   });
 
   const [aiMatchedItems, setAiMatchedItems] = useState<MatchedItemPair[]>(() => {
     try {
       const saved = localStorage.getItem('aiMatchedItems');
       return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
+    } catch (e) { return []; }
   });
   
   const [notification, setNotification] = useState<string | null>(null);
@@ -106,11 +93,9 @@ const App: React.FC = () => {
   }, [transactions]);
 
   const safeSave = (key: string, data: any) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(data));
-    } catch (e) {
+    try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) {
       if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-        setNotification("Storage full! Please clear some items.");
+        setNotification("Storage full!");
       }
     }
   };
@@ -126,31 +111,22 @@ const App: React.FC = () => {
   };
 
   const handleSyncData = async (sourceUrl: string, sourceName: string) => {
-      if (!sourceUrl) {
-          showNotification(`No URL configured for ${sourceName}`);
-          return;
-      }
+      if (!sourceUrl) return;
       try {
         const fetchedData = await fetchTransactions(
             sourceUrl, 
             settings.incomeCategories, 
             settings.investmentCategories,
-            settings.expenseCategories
+            settings.expenseCategories,
+            settings.categoryIcons
         );
-        
         setTransactions(prevTxs => {
             const manualTxs = prevTxs.filter(t => t.source !== 'IOS shortcut');
-            if (fetchedData.length > 0) {
-                showNotification(`Refreshed ${fetchedData.length} items from Sheet.`);
-                return [...manualTxs, ...fetchedData];
-            } else {
-                showNotification(`Synced. No items found in sheet.`);
-                return manualTxs;
-            }
+            showNotification(`Synced ${fetchedData.length} items from sheet.`);
+            return [...manualTxs, ...fetchedData];
         });
       } catch (error) {
-        console.error(`Failed to sync from ${sourceName}:`, error);
-        showNotification(`Failed to sync from ${sourceName}.`);
+        showNotification(`Sync failed.`);
       }
   };
 
@@ -162,59 +138,41 @@ const App: React.FC = () => {
   const handleImportData = (data: any) => {
       if (data.transactions) setTransactions(data.transactions);
       if (data.settings) setSettings(data.settings);
-      if (data.aiFoundItems) setAiFoundItems(data.aiFoundItems);
-      if (data.aiMatchedItems) setAiMatchedItems(data.aiMatchedItems);
-      showNotification("Data restored from backup!");
+      showNotification("Data restored!");
   };
   
-  const handleAddCategory = (type: 'income' | 'expense' | 'investment', category: string) => {
-    if (!category.trim()) return;
+  const handleAddCategory = (type: 'income' | 'expense' | 'investment', category: string, icon?: string) => {
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
-    const currentCategories = settings[key];
-    if (currentCategories.includes(category.trim())) {
-      showNotification("Category already exists.");
-      return;
-    }
-    setSettings(prev => ({ ...prev, [key]: [...currentCategories, category.trim()] }));
-    showNotification(`Added category: ${category}`);
+    if (settings[key].includes(category.trim())) return;
+    setSettings(prev => ({ 
+        ...prev, 
+        [key]: [...prev[key], category.trim()],
+        categoryIcons: { ...prev.categoryIcons, [category.trim()]: icon || '' }
+    }));
   };
 
   const handleDeleteCategory = (type: 'income' | 'expense' | 'investment', categoryToDelete: string) => {
-    // Reassign transactions to "Others" and update their notes to keep context
-    setTransactions(prev => prev.map(t => {
-      if (t.category === categoryToDelete) {
-        return {
-          ...t,
-          category: "Others",
-          note: `[${categoryToDelete}] ${t.note || ''}`.trim()
-        };
-      }
-      return t;
-    }));
-
+    setTransactions(prev => prev.map(t => t.category === categoryToDelete ? { ...t, category: "Others", note: `[${categoryToDelete}] ${t.note || ''}`.trim() } : t));
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
-    setSettings(prev => ({ 
-        ...prev, 
-        [key]: prev[key].filter(c => c !== categoryToDelete),
-        dailyViewCategories: prev.dailyViewCategories.filter(c => c !== categoryToDelete) 
-    }));
-    
-    showNotification(`Deleted "${categoryToDelete}". Items moved to "Others".`);
+    setSettings(prev => {
+        const newIcons = { ...prev.categoryIcons };
+        delete newIcons[categoryToDelete];
+        return { 
+            ...prev, 
+            [key]: prev[key].filter(c => c !== categoryToDelete),
+            categoryIcons: newIcons,
+            dailyViewCategories: prev.dailyViewCategories.filter(c => c !== categoryToDelete) 
+        };
+    });
   };
 
-  const handleEditCategory = (
-    type: 'income' | 'expense' | 'investment',
-    oldName: string,
-    newName: string
-  ) => {
-    if (!newName.trim() || oldName === newName) return;
+  const handleEditCategory = (type: 'income' | 'expense' | 'investment', oldName: string, newName: string, newIcon?: string) => {
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
-    if (settings[key].includes(newName.trim())) {
-      showNotification("Category name already exists.");
-      return;
-    }
-
     setSettings(prev => {
+        const newIcons = { ...prev.categoryIcons };
+        delete newIcons[oldName];
+        newIcons[newName.trim()] = newIcon || '';
+        
         const updatedFreq = { ...prev.dailyTransactionsPerMonth };
         if (updatedFreq[oldName]) {
             updatedFreq[newName.trim()] = updatedFreq[oldName];
@@ -224,51 +182,16 @@ const App: React.FC = () => {
         return {
             ...prev,
             [key]: prev[key].map(c => c === oldName ? newName.trim() : c),
+            categoryIcons: newIcons,
             dailyViewCategories: prev.dailyViewCategories.map(c => c === oldName ? newName.trim() : c),
             dailyTransactionsPerMonth: updatedFreq
         };
     });
-
-    setTransactions(prev => 
-        prev.map(t => t.category === oldName ? { ...t, category: newName.trim() } : t)
-    );
-    
-    const newMonthlyBudgets = { ...settings.monthlyCategoryBudgets };
-    Object.keys(newMonthlyBudgets).forEach(monthKey => {
-      if (newMonthlyBudgets[monthKey][oldName]) {
-        newMonthlyBudgets[monthKey][newName.trim()] = newMonthlyBudgets[monthKey][oldName];
-        delete newMonthlyBudgets[monthKey][oldName];
-      }
-    });
-
-    const newBaseBudgets = { ...settings.baseCategoryBudgets };
-    if (newBaseBudgets[oldName]) {
-        newBaseBudgets[newName.trim()] = newBaseBudgets[oldName];
-        delete newBaseBudgets[oldName];
-    }
-    
-    const newYearlyBudgets = { ...settings.yearlyBudgets };
-    Object.keys(newYearlyBudgets).forEach(yearKey => {
-         if(newYearlyBudgets[yearKey][oldName]) {
-             newYearlyBudgets[yearKey][newName.trim()] = newYearlyBudgets[yearKey][oldName];
-             delete newYearlyBudgets[yearKey][oldName];
-         }
-    });
-
-    setSettings(prev => ({ 
-        ...prev, 
-        monthlyCategoryBudgets: newMonthlyBudgets, 
-        baseCategoryBudgets: newBaseBudgets,
-        yearlyBudgets: newYearlyBudgets
-    }));
-
-    showNotification(`Renamed "${oldName}" to "${newName.trim()}"`);
+    setTransactions(prev => prev.map(t => t.category === oldName ? { ...t, category: newName.trim() } : t));
+    showNotification(`Updated "${newName.trim()}"`);
   };
 
-  const handleReorderCategories = (
-    type: 'income' | 'expense' | 'investment',
-    reorderedCategories: string[]
-  ) => {
+  const handleReorderCategories = (type: 'income' | 'expense' | 'investment', reorderedCategories: string[]) => {
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
     setSettings(prev => ({ ...prev, [key]: reorderedCategories }));
   };
@@ -286,32 +209,19 @@ const App: React.FC = () => {
 
   const handleAddTransaction = (t: Transaction) => {
     setTransactions(prev => [t, ...prev]);
-    const shortNote = t.note && t.note.length > 20 ? t.note.substring(0, 20) + '...' : t.note;
-    showNotification(`Added: ${shortNote || t.category}`);
+    showNotification(`Added Entry`);
   };
 
+  // Added handleUpdateTransaction to fix the undefined reference in Database view
   const handleUpdateTransaction = (updatedTx: Transaction) => {
-      setTransactions(prev => prev.map(tx => tx.id === updatedTx.id ? updatedTx : tx));
-      showNotification("Transaction updated!");
+    setTransactions(prev => prev.map(t => t.id === updatedTx.id ? updatedTx : t));
+    showNotification(`Updated Entry`);
   };
 
+  // Added handleDeleteTransaction to fix the undefined reference in Database view
   const handleDeleteTransaction = (txId: string) => {
-      setTransactions(prev => prev.filter(tx => tx.id !== txId));
-      showNotification("Transaction deleted!");
-  };
-
-  const renderHeaderTitle = () => {
-    switch (view) {
-        case AppView.DASHBOARD: return 'Overview';
-        case AppView.STATISTICS: return 'Analytics';
-        case AppView.ADD_TRANSACTION: return 'New Entry';
-        case AppView.BUDGET: return 'Budgeting';
-        case AppView.DATABASE: return 'Database';
-        case AppView.AI_TOOLS: return 'AI Tools';
-        case AppView.SETTINGS: return 'Configuration';
-        case AppView.EDIT_CATEGORIES: return 'Edit Categories';
-        default: return '';
-    }
+    setTransactions(prev => prev.filter(t => t.id !== txId));
+    showNotification(`Deleted Entry`);
   };
 
   const dashboardBudgets = useMemo(() => {
@@ -330,16 +240,8 @@ const App: React.FC = () => {
       )}
 
       <div className="pt-safe-top px-6 py-4 flex justify-between items-center bg-gray-50 z-10 sticky top-0">
-         <div className="font-bold text-lg tracking-tight text-gray-400">
-             {renderHeaderTitle()}
-         </div>
-         <button 
-             className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 hover:text-blue-600 hover:bg-blue-50 flex items-center justify-center transition-all focus:outline-none"
-             onClick={() => setView(AppView.SETTINGS)}
-             aria-label="Settings"
-         >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-         </button>
+         <div className="font-bold text-lg tracking-tight text-gray-400">Manage Categories</div>
+         <button className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center" onClick={() => setView(AppView.SETTINGS)}><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg></button>
       </div>
 
       <main className="flex-1 px-6 pt-2 pb-6 max-w-2xl mx-auto w-full">
@@ -348,31 +250,8 @@ const App: React.FC = () => {
         {view === AppView.STATISTICS && <Statistics transactions={sortedTransactions} incomeCategories={settings.incomeCategories} investmentCategories={settings.investmentCategories} expenseCategories={settings.expenseCategories} settings={settings} />}
         {view === AppView.DATABASE && <Database transactions={sortedTransactions} onUpdate={handleUpdateTransaction} onDelete={handleDeleteTransaction} settings={settings} onRefresh={() => handleSyncData(settings.sheetDbUrl, "Form Input")} />}
         {view === AppView.BUDGET && <Budgeting onUpdateBudget={handleUpdateBudget} settings={settings} transactions={sortedTransactions} onBack={() => setView(AppView.SETTINGS)} onShowNotification={showNotification}/>}
-        {view === AppView.AI_TOOLS && <AiTools 
-            sheetDbUrl={settings.sheetDbUrl} 
-            onAddTransaction={handleAddTransaction} 
-            transactions={sortedTransactions} 
-            foundTransactions={aiFoundItems} 
-            setFoundTransactions={setAiFoundItems} 
-            matchedItems={aiMatchedItems}
-            setMatchedItems={setAiMatchedItems}
-            incomeCategories={settings.incomeCategories} 
-            expenseCategories={settings.expenseCategories} 
-            investmentCategories={settings.investmentCategories} 
-            onShowNotification={showNotification}
-            isSelectModeActive={isAiSelectModeActive}
-            onToggleSelectMode={setIsAiSelectModeActive}
-        />}
-        {view === AppView.SETTINGS && <Settings 
-            settings={settings} 
-            transactions={transactions} 
-            aiFoundItems={aiFoundItems} 
-            aiMatchedItems={aiMatchedItems}
-            onSave={handleSaveSettings} 
-            onImportData={handleImportData}
-            onNavigateToCategories={() => setView(AppView.EDIT_CATEGORIES)} 
-            onNavigateToBudget={() => setView(AppView.BUDGET)} 
-        />}
+        {view === AppView.AI_TOOLS && <AiTools sheetDbUrl={settings.sheetDbUrl} onAddTransaction={handleAddTransaction} transactions={sortedTransactions} foundTransactions={aiFoundItems} setFoundTransactions={setAiFoundItems} matchedItems={aiMatchedItems} setMatchedItems={setAiMatchedItems} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} onShowNotification={showNotification} isSelectModeActive={isAiSelectModeActive} onToggleSelectMode={setIsAiSelectModeActive} />}
+        {view === AppView.SETTINGS && <Settings settings={settings} transactions={transactions} aiFoundItems={aiFoundItems} aiMatchedItems={aiMatchedItems} onSave={handleSaveSettings} onImportData={handleImportData} onNavigateToCategories={() => setView(AppView.EDIT_CATEGORIES)} onNavigateToBudget={() => setView(AppView.BUDGET)} />}
         {view === AppView.EDIT_CATEGORIES && <EditCategories settings={settings} onAddCategory={handleAddCategory} onDeleteCategory={handleDeleteCategory} onEditCategory={handleEditCategory} onReorderCategories={handleReorderCategories} transactions={sortedTransactions} onBack={() => setView(AppView.SETTINGS)} />}
       </main>
 

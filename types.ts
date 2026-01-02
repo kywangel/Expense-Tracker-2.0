@@ -32,20 +32,22 @@ export interface InvestmentEntry {
 }
 
 export interface AppSettings {
-  sheetDbUrl: string; // Source 1: Google Form Responses (Read-Only usually)
-  masterSheetUrl: string; // Source 2: App Database Master (Read/Write)
-  monthlyBudget: number; // Kept for potential future use or legacy
-  monthlyCategoryBudgets: Record<string, Record<string, number>>; // Kept for legacy/migration
-  baseCategoryBudgets: Record<string, number>; // New: The universal monthly budget
-  yearlyBudgets: Record<string, Record<string, number>>; // New: Overrides for specific years { "2025": { "Food": 500 } }
-  cumulativeStartMonth?: string; // New: YYYY-MM string for cumulative view start
+  sheetDbUrl: string; 
+  masterSheetUrl: string; 
+  monthlyBudget: number; 
+  monthlyCategoryBudgets: Record<string, Record<string, number>>; 
+  baseCategoryBudgets: Record<string, number>; 
+  yearlyBudgets: Record<string, Record<string, number>>; 
+  cumulativeStartMonth?: string; 
   // Dynamic category lists
   incomeCategories: string[];
   expenseCategories: string[];
   investmentCategories: string[];
+  // Category Metadata
+  categoryIcons: Record<string, string>; // Maps category name to emoji/icon
   // Daily View Config
-  dailyViewCategories: string[]; // Ordered list of categories for the Daily Table
-  dailyTransactionsPerMonth: Record<string, number>; // Map of category -> target frequency
+  dailyViewCategories: string[]; 
+  dailyTransactionsPerMonth: Record<string, number>; 
 }
 
 export interface ChartDataPoint {
@@ -58,8 +60,8 @@ export enum AppView {
   ADD_TRANSACTION = 'add_transaction',
   STATISTICS = 'statistics',
   AI_TOOLS = 'ai_tools',
-  BUDGET = 'budget', // Kept for navigation from settings
-  DATABASE = 'database', // New main tab
+  BUDGET = 'budget', 
+  DATABASE = 'database', 
   SETTINGS = 'settings',
   EDIT_CATEGORIES = 'edit_categories'
 }
