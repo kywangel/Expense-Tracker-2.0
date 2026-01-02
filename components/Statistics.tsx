@@ -160,18 +160,17 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
       const validItems = payload.filter((item: any) => item.value > 0);
       if (validItems.length === 0) return null;
 
-      // Sort items by value for better readability
       const sortedItems = [...validItems].sort((a: any, b: any) => b.value - a.value);
 
       return (
         <div 
           className="rounded-2xl border border-gray-100 flex flex-col gap-2 min-w-[220px]"
           style={{ 
-            backgroundColor: '#FFFFFF', // Solid pure white
+            backgroundColor: '#FFFFFF', 
             opacity: 1, 
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0,0,0,0.1)',
             padding: '16px',
-            zIndex: 9999999, // Massive z-index
+            zIndex: 9999999, 
             pointerEvents: 'none',
             position: 'relative',
             mixBlendMode: 'normal',
@@ -318,7 +317,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
 
   return (
     <div className="space-y-6 pb-24">
-       {/* FORCE OPAQUE TOOLTIP CSS INJECTION */}
        <style dangerouslySetInnerHTML={{ __html: `
          .recharts-tooltip-wrapper {
            opacity: 1 !important;
@@ -410,7 +408,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                           key={`chart-${period}`} 
                           data={spendingChartData} 
                           margin={{ top: 20, right: 10, left: -10, bottom: 0 }}
-                          isAnimationActive={false}
                         >
                             <XAxis dataKey="name" tick={{fontSize: 11, fontWeight: 'bold'}} stroke="#9ca3af" axisLine={false} tickLine={false} />
                             <YAxis tick={{fontSize: 10}} stroke="#9ca3af" axisLine={false} tickLine={false} width={45} tickFormatter={(v) => v >= 1000 ? `$${(v/1000).toFixed(0)}k` : `$${v}`} />
