@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Transaction, AppSettings } from '../types';
 import { 
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-    Area, AreaChart, CartesianGrid
+    Area, AreaChart, CartesianGrid, ReferenceLine
 } from 'recharts';
 import { 
     format, endOfWeek, 
@@ -53,6 +53,33 @@ const formatAccounting = (val: number) => {
     return `${sign}$${formattedNum}`;
 };
 
+/**
+ * Helper to get neat whole numbers for chart domains
+ */
+const getNiceDomain = (vals: number[]): [number, number] => {
+    if (vals.length === 0) return [0, 1000];
+    const minVal = Math.min(...vals, 0); // Include 0 to ensure zero line visibility
+    const maxVal = Math.max(...vals, 100);
+
+    const roundToNeat = (val: number, isUpper: boolean) => {
+        if (val === 0) return 0;
+        const absVal = Math.abs(val);
+        const mag = Math.pow(10, Math.floor(Math.log10(absVal)));
+        // Use steps of 1, 2, 5, 10
+        const steps = [1, 2, 5, 10].map(s => s * mag);
+        
+        if (isUpper) {
+            const step = steps.find(s => s >= absVal) || (mag * 10);
+            return val < 0 ? -(steps.reverse().find(s => s <= absVal) || 0) : step;
+        } else {
+            const step = [...steps].reverse().find(s => s <= absVal) || 0;
+            return val < 0 ? -(steps.find(s => s >= absVal) || (mag * 10)) : step;
+        }
+    };
+
+    return [roundToNeat(minVal, false), roundToNeat(maxVal, true)];
+};
+
 const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories, settings }) => {
   const [period, setPeriod] = useState<'Daily' | 'W' | 'Y'>('Daily');
   const [assetView, setAssetView] = useState<'wealth' | 'investment'>('wealth');
@@ -70,7 +97,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     [transactions]
   );
 
-  // Net Asset calculation: Cumulative Income - Cumulative Expenses
   const allMonthlyBalances = useMemo(() => {
     if (sortedTransactions.length === 0) return [];
     
@@ -85,9 +111,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     const end = endOfMonth(new Date());
     const months = eachMonthOfInterval({ start, end });
     
-    let runningWealth = 0;
-    let runningInvestment = 0;
-    
     return months.map(monthDate => {
         const mStart = startOfMonth(monthDate);
         const mEnd = endOfMonth(monthDate);
@@ -95,23 +118,29 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             const d = new Date(tx.date);
             return d >= mStart && d <= mEnd;
         });
+
+        let monthIncome = 0;
+        let monthExpense = 0;
+        let monthInvestment = 0;
+
         monthTxs.forEach(tx => {
-            if (tx.type === 'income') runningWealth += Math.abs(tx.amount);
-            if (tx.type === 'expense') runningWealth -= Math.abs(tx.amount);
-            if (tx.type === 'investment') runningInvestment += Math.abs(tx.amount);
+            if (tx.type === 'income') monthIncome += Math.abs(tx.amount);
+            if (tx.type === 'expense') monthExpense += Math.abs(tx.amount);
+            if (tx.type === 'investment') monthInvestment += Math.abs(tx.amount);
         });
-        return { name: format(monthDate, 'MMM'), date: monthDate, wealth: runningWealth, investment: runningInvestment };
+
+        return { 
+            name: format(monthDate, 'MMM'), 
+            date: monthDate, 
+            wealth: monthIncome - monthExpense, 
+            investment: monthInvestment 
+        };
     });
   }, [sortedTransactions, settings.cumulativeStartMonth]);
 
   const assetChartDomain = useMemo(() => {
-    if (allMonthlyBalances.length === 0) return [0, 1000];
     const vals = allMonthlyBalances.map(b => assetView === 'wealth' ? b.wealth : b.investment);
-    const min = Math.min(...vals);
-    const max = Math.max(...vals);
-    const range = max - min;
-    const padding = range * 0.1 || 1000;
-    return [min - padding, max + padding];
+    return getNiceDomain(vals);
   }, [allMonthlyBalances, assetView]);
 
   const [activeWindowEndIndex, setActiveWindowEndIndex] = useState(allMonthlyBalances.length > 0 ? allMonthlyBalances.length - 1 : 0);
@@ -151,20 +180,21 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     if (allMonthlyBalances.length === 0) return { current: 0, change: 0, percent: 0, range: 'No data' };
     const safeIdx = Math.max(0, Math.min(activeWindowEndIndex, allMonthlyBalances.length - 1));
     const current = allMonthlyBalances[safeIdx]?.[assetView] || 0;
-    const prevIdx = Math.max(0, safeIdx - 12);
+    const prevIdx = Math.max(0, safeIdx - 11); // Range shows 12 months including current
     const prev = allMonthlyBalances[prevIdx]?.[assetView] || 0;
     const change = current - prev;
-    const percent = prev !== 0 ? (change / Math.abs(prev)) * 100 : 0;
-    const dateRange = `${format(allMonthlyBalances[prevIdx].date, 'MMM yy')} - ${format(allMonthlyBalances[safeIdx].date, 'MMM yy')}`;
+    const percent = prev !== 0 ? (change / Math.abs(prev)) * 100 : (current > 0 ? 100 : 0);
+    const dateRange = `${format(allMonthlyBalances[prevIdx].date, 'MMM yy').toUpperCase()} - ${format(allMonthlyBalances[safeIdx].date, 'MMM yy').toUpperCase()}`;
     return { current, change, percent, range: dateRange };
   }, [allMonthlyBalances, activeWindowEndIndex, assetView]);
 
   const gradientOffset = useMemo(() => {
     const data = allMonthlyBalances.map(i => assetView === 'wealth' ? i.wealth : i.investment);
-    const max = Math.max(...data);
-    const min = Math.min(...data);
-    if (max <= 0) return 0;
-    if (min >= 0) return 1;
+    const max = Math.max(...data, 0);
+    const min = Math.min(...data, 0);
+    if (max <= 0 && min < 0) return 0;
+    if (min >= 0 && max > 0) return 1;
+    if (max === min) return 0.5;
     return max / (max - min);
   }, [allMonthlyBalances, assetView]);
 
@@ -233,12 +263,15 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     const startIndex = Math.max(0, Math.floor(scrollLeft / barWidth));
     const endIndex = Math.min(spendingChartData.length - 1, startIndex + visibleCount);
     const visibleData = spendingChartData.slice(startIndex, endIndex + 1);
-    const maxVal = Math.max(...visibleData.map(d => {
+    
+    const totals = visibleData.map(d => {
         let sum = 0;
         [...expenseCategories, "Uncategorized Items"].forEach(cat => { sum += (d[cat] || 0); });
         return sum;
-    }));
-    setVisibleMax(Math.ceil(maxVal * 1.1) || 1000);
+    });
+
+    const [, neatMax] = getNiceDomain(totals);
+    setVisibleMax(neatMax || 1000);
   }, [spendingChartData, period, expenseCategories]);
 
   useEffect(() => {
@@ -439,6 +472,12 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     return Array.from(monthlyDataMap.values());
   }, [sortedTransactions, monthlyFlowYear]);
 
+  // Neat Y-Axis Domain for Portfolio Trends
+  const portfolioDomain = useMemo(() => {
+    const vals = flowOverTimeData.flatMap(d => [d.income, d.expense, d.investment]);
+    return getNiceDomain(vals);
+  }, [flowOverTimeData]);
+
   const currentViewRangeLabel = useMemo(() => {
     if (spendingChartData.length === 0) return 'No Data Available';
     const first = spendingChartData[0].rawDate;
@@ -473,12 +512,12 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                 </div>
             </div>
 
-            <div className="mt-10 mb-8 flex flex-col relative z-20">
-                <div className="flex items-baseline gap-1.5 flex-wrap">
-                    <p className={`text-xl font-black ${windowStats.current >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            <div className="mt-6 mb-10 flex flex-col relative z-20">
+                <div className="flex items-center gap-2">
+                    <p className={`text-2xl font-black tracking-tight ${windowStats.current >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                         {windowStats.current < 0 ? '-' : ''}${f1(Math.abs(windowStats.current))}
                     </p>
-                    <span className={`text-[10px] font-bold ${windowStats.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    <span className={`text-[11px] font-bold flex items-center gap-0.5 ${windowStats.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {windowStats.change >= 0 ? '▲' : '▼'}{Math.abs(Math.round(windowStats.percent))}%
                     </span>
                 </div>
@@ -487,10 +526,10 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
 
             <div className="chart-container-relative-box overflow-hidden">
                 <div ref={scrollRef} onScroll={handleAssetScroll} onMouseDown={(e) => onMouseDown(e, scrollRef)} onMouseLeave={onMouseLeave} onMouseUp={onMouseUp} onMouseMove={(e) => onMouseMove(e, scrollRef)} className="scrollable-chart-layer no-scrollbar" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}>
-                    <div style={{ width: `${Math.max(100, (allMonthlyBalances.length / 24) * 100)}%`, minWidth: '100%', height: '100%' }} className="relative block pointer-events-none">
+                    <div style={{ width: `${Math.max(100, (allMonthlyBalances.length / 12) * 100)}%`, minWidth: '100%', height: '100%' }} className="relative block pointer-events-none">
                         <div className="pointer-events-auto w-full h-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={allMonthlyBalances} margin={{ top: 10, right: 0, left: 0, bottom: 5 }}>
+                                <AreaChart data={allMonthlyBalances} margin={{ top: 10, right: 60, left: 0, bottom: 5 }}>
                                     <defs>
                                         <linearGradient id="assetSplitFill" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset={gradientOffset} stopColor="#10b981" stopOpacity={0.2} />
@@ -501,10 +540,11 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                                             <stop offset={gradientOffset} stopColor="#ef4444" stopOpacity={1} />
                                         </linearGradient>
                                     </defs>
-                                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                                    <XAxis dataKey="name" tick={{fontSize: 8, fontWeight: 700, fill: '#cbd5e1'}} tickFormatter={(v) => v.charAt(0)} stroke="none" dy={5} interval={0} padding={{ left: 0, right: 0 }} />
+                                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f1f5f9" />
+                                    <XAxis dataKey="name" tick={{fontSize: 8, fontWeight: 700, fill: '#cbd5e1'}} tickFormatter={(v) => v.charAt(0)} stroke="none" dy={5} interval={0} padding={{ left: 10, right: 10 }} />
                                     <YAxis hide domain={assetChartDomain} />
-                                    <Area type="monotone" dataKey={assetView} stroke="url(#assetSplitStroke)" strokeWidth={3} fillOpacity={1} fill="url(#assetSplitFill)" isAnimationActive={false} dot={{ r: 3, fill: '#94a3b8', strokeWidth: 0 }} />
+                                    <ReferenceLine y={0} stroke="#cbd5e1" strokeDasharray="3 3" />
+                                    <Area type="monotone" dataKey={assetView} stroke="url(#assetSplitStroke)" strokeWidth={3} fillOpacity={1} fill="url(#assetSplitFill)" isAnimationActive={false} dot={{ r: 3, fill: '#94a3b8', strokeWidth: 0, stroke: '#fff' }} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }} />
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
@@ -550,7 +590,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                         <div style={{ width: `${Math.max(100, (spendingChartData.length / (period === 'W' ? 7 : 12)) * 100)}%`, minWidth: '100%', height: '100%' }} className="relative block pointer-events-none">
                             <div className="pointer-events-auto w-full h-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={spendingChartData} margin={{ top: 0, right: 0, left: 5, bottom: 0 }} barGap={6} onMouseDown={(data: any) => { if (data && data.activePayload) setActivePopupData({ active: true, payload: data.activePayload }); }}>
+                                    <BarChart data={spendingChartData} margin={{ top: 0, right: 60, left: 5, bottom: 0 }} barGap={6} onMouseDown={(data: any) => { if (data && data.activePayload) setActivePopupData({ active: true, payload: data.activePayload }); }}>
                                         <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f1f5f9" />
                                         <XAxis dataKey="name" tick={{fontSize: 9, fontWeight: 700, fill: '#94a3b8'}} stroke="none" dy={10} interval={0} />
                                         <YAxis hide domain={[0, visibleMax]} />
@@ -607,7 +647,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
               <BarChart data={flowOverTimeData} margin={{ top: 0, right: 5, left: 5, bottom: 0 }} barSize={12}>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="name" tick={{fontSize: 9, fontWeight: 600, fill: '#cbd5e1'}} stroke="none" dy={10} interval={1} />
-                <YAxis orientation="right" tick={{fontSize: 9, fontWeight: 600, fill: '#cbd5e1'}} stroke="none" width={40} dx={-2} tickFormatter={(v) => `$${f0(v/1000)}k`} />
+                <YAxis orientation="right" tick={{fontSize: 9, fontWeight: 600, fill: '#cbd5e1'}} stroke="none" width={40} dx={-2} domain={portfolioDomain} tickFormatter={(v) => `$${f0(v/1000)}k`} />
                 <Bar dataKey="income" fill="#10b981" name="Income" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                 <Bar dataKey="expense" fill="#ef4444" name="Expenses" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                 <Bar dataKey="investment" fill="#3b82f6" name="Investments" radius={[4, 4, 0, 0]} isAnimationActive={false} />
