@@ -21,6 +21,9 @@ interface AiToolsProps {
   onToggleSelectMode: (isActive: boolean) => void;
 }
 
+// Consistent 1-decimal rounding helper
+const f1 = (val: number) => val.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
 const AiTools: React.FC<AiToolsProps> = ({ 
   sheetDbUrl, onAddTransaction, transactions,
   foundTransactions, setFoundTransactions, 
@@ -51,7 +54,6 @@ const AiTools: React.FC<AiToolsProps> = ({
 
     try {
       let allResults: FoundItem[] = [];
-      // FIX: Explicitly cast FileList to a File array to resolve type inference issues.
       for (const file of Array.from(files) as File[]) {
           const base64 = await fileToGenerativePart(file);
           const results = await analyzeStatement(base64, file.type);
@@ -87,8 +89,6 @@ const AiTools: React.FC<AiToolsProps> = ({
     }
   };
   
-  // FIX: Changed the second parameter to a more specific callback function type
-  // to prevent TypeScript from inferring an incorrect union type for the callback argument.
   const reanalyzeList = (list: FoundItem[], onReanalyzeComplete: (keptItems: FoundItem[]) => void) => {
     const itemsToKeep: FoundItem[] = [];
     const newlyMatched: MatchedItemPair[] = [];
@@ -156,7 +156,6 @@ const AiTools: React.FC<AiToolsProps> = ({
 
     const newTx: Transaction = {
         id: `local-${Date.now()}`,
-        // Use HK Date String for consistency
         date: item.date || toHKDateString(new Date()),
         amount: finalAmount, category: selectedCategory,
         note: item.note || "Imported Statement Item", type: selectedType,
@@ -173,7 +172,7 @@ const AiTools: React.FC<AiToolsProps> = ({
   
   const toggleSelectMode = () => {
     onToggleSelectMode(!isSelectModeActive);
-    if (isSelectModeActive) { // Turning off
+    if (isSelectModeActive) {
         setSelectedIds(new Set()); 
     }
   };
@@ -225,7 +224,7 @@ const AiTools: React.FC<AiToolsProps> = ({
                 </div>
                 {!isSelectModeActive && (
                     <div className="flex items-center space-x-2">
-                      <span className="font-mono text-sm font-semibold">${item.amount?.toFixed(2)}</span>
+                      <span className="font-mono text-sm font-semibold">${item.amount ? f1(item.amount) : '0.0'}</span>
                        {!item.added && <button onClick={() => openAddModal(item, item.id)} className="p-2 rounded-lg border transition-colors bg-green-50 text-green-600 hover:bg-green-100 border-green-200"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg></button>}
                     </div>
                 )}
@@ -233,7 +232,7 @@ const AiTools: React.FC<AiToolsProps> = ({
             </div>
             {isMatched && matchedTx && (
                 <div className="bg-yellow-50 border-t border-b border-yellow-200 px-4 py-2 text-xs text-yellow-800 -mt-2 mb-3 rounded-b-xl">
-                    <strong>Matched:</strong> {matchedTx.category} ({matchedTx.source}) for ${matchedTx.amount.toFixed(2)} on {matchedTx.date}
+                    <strong>Matched:</strong> {matchedTx.category} ({matchedTx.source}) for ${f1(matchedTx.amount)} on {matchedTx.date}
                 </div>
             )}
         </div>
@@ -286,7 +285,6 @@ const AiTools: React.FC<AiToolsProps> = ({
                {renderListHeader("Matched Items", () => {
                    const matchedSuggestions = matchedItems.map(p => p.suggested);
                    const count = reanalyzeList(matchedSuggestions, (items) => {
-                       // This is tricky. We need to update the matchedItems list.
                        const remainingIds = new Set(items.map(i => i.id));
                        setMatchedItems(prev => prev.filter(p => remainingIds.has(p.suggested.id)));
                    });

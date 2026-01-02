@@ -11,13 +11,15 @@ interface BudgetingProps {
   onShowNotification: (message: string) => void;
 }
 
+// Consistent 1-decimal rounding helper
+const f1 = (val: number) => val.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
 const Budgeting: React.FC<BudgetingProps> = ({ settings, transactions, onUpdateBudget, onBack }) => {
     const { baseCategoryBudgets, yearlyBudgets, incomeCategories, expenseCategories, investmentCategories } = settings;
     const [viewDate, setViewDate] = useState(new Date());
 
     const viewYear = getYear(viewDate);
 
-    // Calculate actuals for the selected year
     const yearlyActuals = useMemo(() => {
         const actuals: Record<string, number> = {};
         transactions.forEach(tx => {
@@ -29,8 +31,6 @@ const Budgeting: React.FC<BudgetingProps> = ({ settings, transactions, onUpdateB
     }, [transactions, viewDate]);
 
     const renderBudgetSection = (title: string, categories: string[], type: 'income' | 'expense' | 'investment') => {
-        // Calculate Total Budget for this year
-        // It sums up either the specific yearly override or falls back to the base budget
         const totalBudget = categories.reduce((sum, cat) => {
             const yearSpecific = yearlyBudgets?.[viewYear.toString()]?.[cat];
             const base = baseCategoryBudgets[cat] || 0;
@@ -50,8 +50,6 @@ const Budgeting: React.FC<BudgetingProps> = ({ settings, transactions, onUpdateB
                     {categories.map(cat => {
                         const yearSpecific = yearlyBudgets?.[viewYear.toString()]?.[cat];
                         const baseAmount = baseCategoryBudgets[cat] || 0;
-                        
-                        // Effective budget: If specific year exists, use it, else use base
                         const effectiveBudget = yearSpecific !== undefined ? yearSpecific : baseAmount;
                         
                         const yearlyAmount = effectiveBudget * 12;
@@ -63,7 +61,6 @@ const Budgeting: React.FC<BudgetingProps> = ({ settings, transactions, onUpdateB
                                 <div className="min-w-0">
                                     <label htmlFor={`${cat}-budget`} className="font-bold text-gray-800 truncate block">{cat}</label>
                                     
-                                    {/* Progress Bar for Actual vs Budget */}
                                     <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
                                         <div 
                                             className={`h-full ${type === 'income' ? 'bg-green-400' : type === 'expense' ? 'bg-red-400' : 'bg-blue-400'} opacity-70`} 
@@ -71,8 +68,8 @@ const Budgeting: React.FC<BudgetingProps> = ({ settings, transactions, onUpdateB
                                         />
                                     </div>
                                     <div className="flex justify-between items-center mt-1 text-[10px]">
-                                        <span className="text-gray-500 font-medium">Spent: ${actualAmount.toLocaleString('en-US', {maximumFractionDigits: 0})}</span>
-                                        <span className="text-gray-400">Target: {yearlyAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}</span>
+                                        <span className="text-gray-500 font-medium">Spent: ${f1(actualAmount)}</span>
+                                        <span className="text-gray-400">Target: ${f1(yearlyAmount)}</span>
                                     </div>
                                 </div>
                                 <div>
@@ -81,7 +78,7 @@ const Budgeting: React.FC<BudgetingProps> = ({ settings, transactions, onUpdateB
                                         <input
                                             id={`${cat}-budget`}
                                             type="number"
-                                            placeholder={baseAmount > 0 && yearSpecific === undefined ? baseAmount.toString() : "0"}
+                                            placeholder={baseAmount > 0 && yearSpecific === undefined ? baseAmount.toFixed(1) : "0.0"}
                                             value={yearSpecific !== undefined ? yearSpecific : (baseAmount > 0 ? baseAmount : '')}
                                             onChange={e => onUpdateBudget(cat, parseFloat(e.target.value) || 0, viewYear)}
                                             onWheel={(e) => (e.target as HTMLInputElement).blur()}
@@ -98,11 +95,11 @@ const Budgeting: React.FC<BudgetingProps> = ({ settings, transactions, onUpdateB
                 <div className="px-4 py-3 bg-gray-50 font-bold text-sm border-t border-gray-200 flex justify-between items-center">
                      <div>
                          <span className="block text-gray-600 text-xs uppercase">Monthly Total</span>
-                         <span className="font-mono text-lg text-gray-900">${totalBudget.toLocaleString('en-US', {minimumFractionDigits: 0})}</span>
+                         <span className="font-mono text-lg text-gray-900">${f1(totalBudget)}</span>
                      </div>
                      <div className="text-right">
                          <span className="block text-gray-400 text-xs uppercase">{viewYear} Projection</span>
-                         <span className="font-mono text-gray-500">${yearlyProjection.toLocaleString('en-US', {minimumFractionDigits: 0})}</span>
+                         <span className="font-mono text-gray-500">${f1(yearlyProjection)}</span>
                      </div>
                 </div>
             </div>
@@ -117,7 +114,6 @@ const Budgeting: React.FC<BudgetingProps> = ({ settings, transactions, onUpdateB
                     Back
                 </button>
                 
-                {/* Year Adjustment Controls */}
                 <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-1">
                     <button onClick={() => setViewDate(subYears(viewDate, 1))} className="p-1.5 hover:bg-white rounded-md transition-colors text-gray-600">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>

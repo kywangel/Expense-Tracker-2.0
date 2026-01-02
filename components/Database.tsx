@@ -12,6 +12,9 @@ interface DatabaseProps {
 
 type FilterType = 'all' | 'income' | 'expense' | 'investment';
 
+// Consistent 1-decimal rounding helper
+const f1 = (val: number) => val.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
 const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, settings, onRefresh }) => {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
@@ -20,7 +23,6 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
   const [visibleMonths, setVisibleMonths] = useState<Record<string, boolean>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Sync Input (Form)
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await onRefresh();
@@ -60,10 +62,8 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
     const headers = "Date,Amount,Category,Note,Type\n";
     const csvContent = filteredTransactions
       .map(tx => {
-          // Use Source if present (e.g., 'IOS shortcut'), otherwise Note
           const finalNote = tx.source || tx.note || '';
-          
-          return `${tx.date},${tx.amount},"${(tx.category || '').replace(/"/g, '""')}","${finalNote.replace(/"/g, '""')}",${tx.type}`;
+          return `${tx.date},${tx.amount.toFixed(1)},"${(tx.category || '').replace(/"/g, '""')}","${finalNote.replace(/"/g, '""')}",${tx.type}`;
       })
       .join("\n");
       
@@ -105,11 +105,10 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
   };
   
   const renderAmount = (tx: Transaction) => {
-    const amount = Math.abs(tx.amount);
-    const formattedAmount = amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (tx.type === 'income') return <span className="text-green-600 font-semibold">+ {formattedAmount}</span>;
-    if (tx.type === 'expense') return <span className="text-red-600 font-semibold">- {formattedAmount}</span>;
-    return <span className="text-gray-800 font-semibold">{formattedAmount}</span>;
+    const amountStr = f1(Math.abs(tx.amount));
+    if (tx.type === 'income') return <span className="text-green-600 font-semibold">+ {amountStr}</span>;
+    if (tx.type === 'expense') return <span className="text-red-600 font-semibold">- {amountStr}</span>;
+    return <span className="text-gray-800 font-semibold">{amountStr}</span>;
   };
   
   const renderTypeBadge = (type: Transaction['type']) => {
@@ -130,7 +129,6 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
 
   return (
     <div className="pb-24 space-y-5">
-        {/* iOS Style Segmented Control */}
         <div className="bg-gray-200 p-1 rounded-xl flex text-xs font-semibold mx-1">
             {(['all', 'expense', 'income', 'investment'] as FilterType[]).map(f => (
                 <button 
@@ -143,7 +141,6 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
             ))}
         </div>
 
-        {/* Action Grid (2 buttons now) */}
         <div className="grid grid-cols-2 gap-3">
              <button onClick={handleRefresh} disabled={isRefreshing} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center gap-2 active:bg-gray-50 active:scale-95 transition-all disabled:opacity-50 h-24">
                  <div className={`w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center ${isRefreshing ? 'animate-spin' : ''}`}>

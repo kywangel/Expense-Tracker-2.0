@@ -32,6 +32,9 @@ const INVESTMENT_CHART_COLORS = ['#2563EB', '#3B82F6', '#60A5FA', '#93C5FD', '#B
 
 type ViewMode = 'monthly' | 'daily' | 'cumulative';
 
+// Consistent 1-decimal rounding helper
+const f1 = (val: number) => val.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
 const Dashboard: React.FC<DashboardProps> = ({ 
   transactions, 
   baseCategoryBudgets, 
@@ -121,7 +124,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     
   const netBalance = totalIncome - totalExpenses;
 
-  // Helper for consistent icon + name display
   const getDisplayCategoryName = (name: string) => {
       const icon = categoryIcons[name];
       return icon ? `${icon} ${name}` : name;
@@ -194,8 +196,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </div>
               </div>
               <div className="flex flex-col items-end shrink-0">
-                  <span className="font-mono font-bold text-gray-900 text-sm">${Math.abs(tracked).toLocaleString()}</span>
-                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">/ {budget > 0 ? Math.round(budget).toLocaleString() : '--'}</span>
+                  <span className="font-mono font-bold text-gray-900 text-sm">${f1(Math.abs(tracked))}</span>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">/ {budget > 0 ? f1(budget) : '--'}</span>
               </div>
             </div>
             {isDrilledDown && (
@@ -212,7 +214,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               </div>
                           </div>
                           <span className={`text-[11px] font-mono font-bold shrink-0 ml-4 ${tx.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
-                              {tx.type === 'income' ? '+' : ''}{Math.abs(tx.amount).toLocaleString()}
+                              {tx.type === 'income' ? '+' : ''}{f1(Math.abs(tx.amount))}
                           </span>
                       </div>
                   )) : <div className={`py-4 pl-12 pr-4 text-[10px] text-gray-400 italic ${childBg}`}>No transactions found</div>}
@@ -226,7 +228,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-6 border border-gray-200">
         <div className={`${headerColor} text-white px-4 py-3 font-bold text-sm flex justify-between items-center`}>
            <span>{title}</span>
-           <span className="text-xs opacity-90">${totalTracked.toLocaleString()}</span>
+           <span className="text-xs opacity-90">${f1(totalTracked)}</span>
         </div>
 
         <div className="p-4 flex flex-col items-center">
@@ -248,7 +250,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                <span className="w-2 h-2 rounded-full mr-1.5 shrink-0" style={{ backgroundColor: chartColors[index % chartColors.length] }}></span>
                                <span className="text-gray-500 truncate">{getDisplayCategoryName(entry.name)}</span>
                             </div>
-                            <span className="font-mono font-bold text-gray-700 ml-1">${entry.value.toLocaleString()}</span>
+                            <span className="font-mono font-bold text-gray-700 ml-1">${f1(entry.value)}</span>
                         </div>
                     ))}
                 </div>
@@ -290,7 +292,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                     </div>
                     <div className="flex flex-col items-end shrink-0">
-                        <span className="font-mono font-bold text-red-900 text-sm">${strayValue.toLocaleString()}</span>
+                        <span className="font-mono font-bold text-red-900 text-sm">${f1(strayValue)}</span>
                         <span className="text-[9px] text-red-400 font-black uppercase tracking-tighter">Missing Cat</span>
                     </div>
                   </div>
@@ -308,7 +310,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     </div>
                                 </div>
                                 <span className={`text-[11px] font-mono font-bold shrink-0 ml-4 ${tx.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
-                                    {tx.type === 'income' ? '+' : ''}{Math.abs(tx.amount).toLocaleString()}
+                                    {tx.type === 'income' ? '+' : ''}{f1(Math.abs(tx.amount))}
                                 </span>
                             </div>
                         ))}
@@ -358,10 +360,12 @@ const Dashboard: React.FC<DashboardProps> = ({
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 to-blue-500"></div>
         <p className="text-[10px] text-gray-400 font-extrabold uppercase tracking-[0.2em] mb-1">Net Balance</p>
-        <p className={`text-3xl font-black tracking-tighter ${netBalance >= 0 ? 'text-green-600' : 'text-red-500'}`}>{netBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</p>
+        <p className={`text-3xl font-black tracking-tighter ${netBalance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+          ${f1(netBalance)}
+        </p>
         <div className="flex justify-center gap-4 mt-3 pt-3 border-t border-gray-50">
-            <div className="text-left"><span className="block text-[8px] text-gray-400 font-bold uppercase">Income</span><span className="font-mono font-bold text-green-600 text-xs">${totalIncome.toLocaleString()}</span></div>
-            <div className="text-left"><span className="block text-[8px] text-gray-400 font-bold uppercase">Expenses</span><span className="font-mono font-bold text-red-500 text-xs">${totalExpenses.toLocaleString()}</span></div>
+            <div className="text-left"><span className="block text-[8px] text-gray-400 font-bold uppercase">Income</span><span className="font-mono font-bold text-green-600 text-xs">${f1(totalIncome)}</span></div>
+            <div className="text-left"><span className="block text-[8px] text-gray-400 font-bold uppercase">Expenses</span><span className="font-mono font-bold text-red-500 text-xs">${f1(totalExpenses)}</span></div>
         </div>
       </div>
 

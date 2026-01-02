@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import Navigation from './components/Navigation';
 import Dashboard from './components/Dashboard';
@@ -89,7 +88,7 @@ const App: React.FC = () => {
   const [isAiSelectModeActive, setIsAiSelectModeActive] = useState(false);
 
   const sortedTransactions = useMemo(() => {
-    return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(b.date).getTime());
   }, [transactions]);
 
   const safeSave = (key: string, data: any) => {
@@ -229,20 +228,35 @@ const App: React.FC = () => {
     return { ...base, ...yearly };
   }, [settings.baseCategoryBudgets, settings.yearlyBudgets]);
 
+  const viewTitle = useMemo(() => {
+    switch(view) {
+        case AppView.DASHBOARD: return "Dashboard";
+        case AppView.STATISTICS: return "Statistics";
+        case AppView.DATABASE: return "Database";
+        case AppView.AI_TOOLS: return "AI Tools";
+        case AppView.SETTINGS: return "Settings";
+        case AppView.ADD_TRANSACTION: return "Add Transaction";
+        case AppView.BUDGET: return "Manage Budget";
+        case AppView.EDIT_CATEGORIES: return "Edit Categories";
+        default: return "App";
+    }
+  }, [view]);
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col font-sans relative">
       {notification && (
-        <div className="fixed top-5 left-1/2 bg-gray-900/80 backdrop-blur-sm text-white px-5 py-2.5 rounded-full shadow-2xl z-[100] animate-fade-in-down">
+        <div className="fixed top-5 left-1/2 bg-gray-900/80 backdrop-blur-sm text-white px-5 py-2.5 rounded-full shadow-2xl z-[1000] animate-fade-in-down">
           <p className="text-sm font-medium">{notification}</p>
         </div>
       )}
 
-      <div className="pt-safe-top px-6 py-4 flex justify-between items-center bg-gray-50 z-10 sticky top-0">
-         <div className="font-bold text-lg tracking-tight text-gray-400">Manage Categories</div>
+      {/* Circle top header: extremely high z-index to stay on top of everything else during scroll */}
+      <div className="pt-safe-top px-6 py-4 flex justify-between items-center bg-gray-50/95 backdrop-blur-md z-[800] sticky top-0 border-b border-gray-100">
+         <div className="font-bold text-lg tracking-tight text-gray-800">{viewTitle}</div>
          <button className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center" onClick={() => setView(AppView.SETTINGS)}><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg></button>
       </div>
 
-      <main className="flex-1 px-6 pt-2 pb-6 max-w-2xl mx-auto w-full">
+      <main className="flex-1 px-6 pt-2 pb-6 max-w-2xl mx-auto w-full relative z-10">
         {view === AppView.DASHBOARD && <Dashboard transactions={sortedTransactions} baseCategoryBudgets={dashboardBudgets} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} categoryIcons={settings.categoryIcons} cumulativeStartMonth={settings.cumulativeStartMonth} />}
         {view === AppView.ADD_TRANSACTION && <AddTransaction onAdd={handleAddTransaction} sheetDbUrl={settings.sheetDbUrl} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} />}
         {view === AppView.STATISTICS && <Statistics transactions={sortedTransactions} incomeCategories={settings.incomeCategories} investmentCategories={settings.investmentCategories} expenseCategories={settings.expenseCategories} settings={settings} />}
