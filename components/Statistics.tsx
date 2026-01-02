@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Transaction, AppSettings } from '../types';
 import { 
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { 
     format, endOfWeek, endOfYear,
-    eachDayOfInterval, eachMonthOfInterval, addMonths, 
+    eachDayOfInterval, eachMonthOfInterval, 
     isToday, isSameMonth, addWeeks, addYears, isSameDay,
     startOfDay, addDays, getYear
 } from 'date-fns';
@@ -43,32 +43,14 @@ interface StatisticsProps {
   settings: AppSettings;
 }
 
-// iOS System Colors Palette
 const IOS_COLORS = [
-    '#007AFF', // Blue
-    '#34C759', // Green
-    '#FF9500', // Orange
-    '#FF3B30', // Red
-    '#AF52DE', // Purple
-    '#5AC8FA', // Teal
-    '#FF2D55', // Pink
-    '#5856D6', // Indigo
-    '#FFCC00', // Yellow
-    '#8E8E93', // Gray
-    '#63E6BE', // Mint
-    '#FA5252', // Soft Red
-    '#BE4BDB', // Grape
-    '#4C6EF5', // Royal Blue
-    '#FAB005', // Gold
-    '#12B886', // Teal Green
-    '#7950F2', // Deep Purple
-    '#FD7E14', // Burnt Orange
-    '#228BE6', // Bright Blue
-    '#E64980', // Rose
+    '#007AFF', '#34C759', '#FF9500', '#FF3B30', '#AF52DE', 
+    '#5AC8FA', '#FF2D55', '#5856D6', '#FFCC00', '#8E8E93', 
+    '#63E6BE', '#FA5252', '#BE4BDB', '#4C6EF5', '#FAB005', 
+    '#12B886', '#7950F2', '#FD7E14', '#228BE6', '#E64980'
 ];
 
 const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories, settings }) => {
-  // Default to Daily view and reordered options
   const [period, setPeriod] = useState<'Daily' | 'W' | 'Y'>('Daily');
   const [assetView, setAssetView] = useState<'wealth' | 'investment'>('wealth');
   const [dateOffset, setDateOffset] = useState(0); 
@@ -200,7 +182,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     return Array.from(monthlyDataMap.values());
   }, [sortedTransactions, monthlyFlowYear]);
 
-  // Custom Legend for "Spending Analysis" to make it look like a tidy table
   const TidyLegend = (props: any) => {
     const { payload } = props;
     if (!payload || payload.length === 0) return null;
@@ -210,10 +191,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-y-3 gap-x-2">
           {payload.map((entry: any, index: number) => (
             <div key={`item-${index}`} className="flex items-start gap-2 min-w-0">
-              <div 
-                className="w-2.5 h-2.5 rounded-full mt-1 shrink-0" 
-                style={{ backgroundColor: entry.color }}
-              />
+              <div className="w-2.5 h-2.5 rounded-full mt-1 shrink-0" style={{ backgroundColor: entry.color }} />
               <span className="text-[10px] leading-tight font-bold text-gray-500 truncate" title={entry.value}>
                 {getDisplayCategoryName(entry.value)}
               </span>
@@ -227,23 +205,12 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   const DailyTableView = () => {
     const viewDate = startOfDay(addDays(new Date(), dateOffset));
     const yearStr = getYear(viewDate).toString();
-    
-    const effectiveBudgets = useMemo(() => {
-        return { 
-            ...(settings.baseCategoryBudgets || {}), 
-            ...(settings.yearlyBudgets?.[yearStr] || {}) 
-        };
-    }, [settings.baseCategoryBudgets, settings.yearlyBudgets, yearStr]);
-
+    const effectiveBudgets = settings.yearlyBudgets?.[yearStr] || settings.baseCategoryBudgets || {};
     const trackedCats = settings.dailyViewCategories || [];
     const targetFreqs = settings.dailyTransactionsPerMonth || {};
 
-    const monthTxs = transactions.filter(tx => {
-        const d = new Date(tx.date);
-        return isSameMonth(d, viewDate) && tx.type === 'expense';
-    });
+    const monthTxs = transactions.filter(tx => isSameMonth(new Date(tx.date), viewDate) && tx.type === 'expense');
     const selectedDayTxs = transactions.filter(tx => isSameDay(new Date(tx.date), viewDate) && tx.type === 'expense');
-
     const totalExpenseBudget = expenseCategories.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
     const trackedBudgetSum = trackedCats.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
 
@@ -254,24 +221,16 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         const daySpent = selectedDayTxs.filter(t => t.category === cat).reduce((sum, t) => sum + Math.abs(t.amount), 0);
         const monthSpent = monthTxs.filter(t => t.category === cat).reduce((sum, t) => sum + Math.abs(t.amount), 0);
         const monthCount = monthTxs.filter(t => t.category === cat).length;
-        const leftMonth = budget - monthSpent;
-
-        return { cat, budget, freq, unitCost, daySpent, leftMonth, monthCount };
+        return { cat, budget, freq, unitCost, daySpent, leftMonth: budget - monthSpent, monthCount };
     });
 
     const untrackedBudget = totalExpenseBudget - trackedBudgetSum;
     const othersDaySpent = selectedDayTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const othersMonthSpent = monthTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    const othersMonthCount = monthTxs.filter(t => !trackedCats.includes(t.category)).length;
 
     rows.push({
-        cat: 'Others',
-        budget: untrackedBudget,
-        freq: 0,
-        unitCost: 0,
-        daySpent: othersDaySpent,
-        leftMonth: untrackedBudget - othersMonthSpent,
-        monthCount: othersMonthCount
+        cat: 'Others', budget: untrackedBudget, freq: 0, unitCost: 0, daySpent: othersDaySpent,
+        leftMonth: untrackedBudget - othersMonthSpent, monthCount: monthTxs.filter(t => !trackedCats.includes(t.category)).length
     });
 
     const spentHeaderLabel = isToday(viewDate) ? 'Today' : format(viewDate, 'MMM d');
@@ -284,15 +243,12 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                 </button>
                 <div className="flex flex-col items-center">
                     <span className="text-sm font-bold text-gray-800">{format(viewDate, 'EEEE, MMM do')}</span>
-                    {dateOffset !== 0 && (
-                        <button onClick={() => setDateOffset(0)} className="text-[10px] font-bold text-blue-600 uppercase tracking-tight hover:underline">Back to Today</button>
-                    )}
+                    {dateOffset !== 0 && <button onClick={() => setDateOffset(0)} className="text-[10px] font-bold text-blue-600 uppercase tracking-tight hover:underline">Back to Today</button>}
                 </div>
                 <button onClick={() => setDateOffset(p => p + 1)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </button>
             </div>
-
             <div className="overflow-x-auto -mx-4 sm:mx-0 rounded-xl border border-gray-100 shadow-sm">
                 <table className="w-full text-[11px] sm:text-xs text-left border-collapse bg-white">
                     <thead>
@@ -336,13 +292,13 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                      <span className="font-bold text-gray-600 w-10 text-center">{netAssetYear}</span>
                      <button onClick={() => setNetAssetYear(y => y + 1)} className="p-1 rounded-full hover:bg-gray-100 text-gray-500 transition-colors">&gt;</button>
                    </div>
-                 <div className="flex bg-gray-100 p-1 rounded-lg text-xs">
+                   <div className="flex bg-gray-100 p-1 rounded-lg text-xs">
                     {(['wealth', 'investment'] as const).map(p => (
                         <button key={p} onClick={() => setAssetView(p)} className={`px-3 py-1.5 font-bold rounded-md transition-all capitalize text-sm ${assetView === p ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
                             {p === 'wealth' ? 'Wealth' : 'Investments'}
                         </button>
                     ))}
-                </div>
+                  </div>
                 </div>
             </div>
             <div className="h-64 -ml-4">
@@ -368,7 +324,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                 <h3 className="font-semibold text-gray-500 text-sm leading-tight">Spending<br/>Analysis</h3>
                 <div className="flex items-center justify-end gap-x-2 gap-y-2 flex-wrap">
                     <div className="flex bg-gray-100 p-1 rounded-lg text-[10px] sm:text-xs">
-                        {/* Daily view is now first and M/6M are removed */}
                         {(['Daily', 'W', 'Y'] as const).map(p => (
                             <button key={p} onClick={() => { setPeriod(p); setDateOffset(0); }} className={`px-3 py-1.5 font-bold rounded-md transition-colors ${period === p ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
                                 {p}
@@ -383,8 +338,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                   <div className="flex items-center justify-center gap-4 my-2">
                     <button onClick={() => setDateOffset(p => p - 1)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors">&lt;</button>
                     <span className="text-sm font-bold text-gray-600">
-                        {period === 'W' ? `${format(startOfWeek(addWeeks(new Date(), dateOffset)), 'd MMM')} - ${format(endOfWeek(addWeeks(new Date(), dateOffset)), 'd MMM')}` :
-                         format(addYears(new Date(), dateOffset), 'yyyy')}
+                        {period === 'W' ? `${format(startOfWeek(addWeeks(new Date(), dateOffset)), 'd MMM')} - ${format(endOfWeek(addWeeks(new Date(), dateOffset)), 'd MMM')}` : format(addYears(new Date(), dateOffset), 'yyyy')}
                     </span>
                     <button onClick={() => setDateOffset(p => p + 1)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors">&gt;</button>
                   </div>
@@ -395,17 +349,18 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                             <YAxis tick={{fontSize: 12}} stroke="#9ca3af" axisLine={false} tickLine={false} width={40} />
                             <Tooltip 
                                 cursor={{fill: 'rgba(243, 244, 246, 0.4)'}} 
-                                // Only show items with non-zero values to keep popup tidy
-                                filterBy={(value: any) => value > 0}
-                                formatter={(value: number, name: string) => [`$${value.toLocaleString()}`, getDisplayCategoryName(name)]}
+                                formatter={(value: number, name: string) => {
+                                    if (value <= 0) return [null, null];
+                                    return [`$${value.toLocaleString()}`, getDisplayCategoryName(name)];
+                                }}
                                 contentStyle={{ 
                                     borderRadius: '16px', 
                                     border: '1px solid #f3f4f6', 
                                     boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                                    backgroundColor: '#ffffff', // Guaranteed fully opaque white
+                                    backgroundColor: '#ffffff',
                                     padding: '16px',
                                     zIndex: 1000,
-                                    opacity: 1 // Force full opacity
+                                    opacity: 1
                                 }}
                                 itemStyle={{ fontWeight: 'bold', fontSize: '12px', padding: '2px 0' }}
                                 labelStyle={{ fontWeight: '900', color: '#111827', marginBottom: '10px', fontSize: '14px', borderBottom: '1.5px solid #f3f4f6', paddingBottom: '6px' }}
@@ -437,11 +392,8 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                 <Tooltip 
                   formatter={(v: number) => `$${v.toLocaleString()}`} 
                   contentStyle={{ 
-                    borderRadius: '12px', 
-                    border: '1px solid #f3f4f6', 
-                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', 
-                    backgroundColor: '#fff',
-                    opacity: 1
+                    borderRadius: '12px', border: '1px solid #f3f4f6', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', 
+                    backgroundColor: '#fff', opacity: 1
                   }} 
                 />
                 <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}}/>
