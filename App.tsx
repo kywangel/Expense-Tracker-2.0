@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import Navigation from './components/Navigation';
 import Dashboard from './components/Dashboard';
@@ -88,7 +89,7 @@ const App: React.FC = () => {
   const [isAiSelectModeActive, setIsAiSelectModeActive] = useState(false);
 
   const sortedTransactions = useMemo(() => {
-    return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(b.date).getTime());
+    return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions]);
 
   const safeSave = (key: string, data: any) => {

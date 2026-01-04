@@ -85,6 +85,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   const [assetView, setAssetView] = useState<'wealth' | 'investment'>('wealth');
   const [dateOffset, setDateOffset] = useState(0); 
   const [monthlyFlowYear, setMonthlyFlowYear] = useState(new Date().getFullYear());
+  const [isOthersExpanded, setIsOthersExpanded] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const spendingScrollRef = useRef<HTMLDivElement>(null);
@@ -294,7 +295,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   };
 
   /**
-   * Daily View Table implementation as requested.
+   * Daily View Table implementation with breakdown of 'Others' category.
    */
   const DailyTableView = () => {
     const viewDate = startOfDay(addDays(new Date(), dateOffset));
@@ -321,7 +322,8 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     });
     
     const untrackedBudget = totalExpenseBudget - trackedBudgetSum;
-    const othersDaySpent = selectedDayTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const othersDayTxs = selectedDayTxs.filter(t => !trackedCats.includes(t.category));
+    const othersDaySpent = othersDayTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const othersMonthSpent = monthTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const othersMonthCount = monthTxs.filter(t => !trackedCats.includes(t.category) && Math.abs(t.amount) > 0).length;
     
@@ -376,8 +378,14 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                             <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{r.times}</td>
                         </tr>
                     ))}
-                    <tr className="bg-gray-50/50 italic">
-                        <td className="px-3 py-3 font-semibold text-gray-700">Others</td>
+                    <tr 
+                      className="bg-gray-50/50 italic cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => setIsOthersExpanded(!isOthersExpanded)}
+                    >
+                        <td className="px-3 py-3 font-semibold text-gray-700 flex items-center gap-1.5">
+                            <svg className={`w-3 h-3 transition-transform text-gray-400 ${isOthersExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                            Others
+                        </td>
                         <td className="px-2 py-3 text-right font-mono text-gray-600">${f0(othersRow.budget)}</td>
                         <td className="px-2 py-3 text-center font-mono text-gray-400">--</td>
                         <td className="px-2 py-3 text-right font-mono text-gray-400">$--</td>
@@ -385,6 +393,23 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                         <td className={`px-2 py-3 text-right font-mono ${othersRow.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>${f0(othersRow.leftMonth)}</td>
                         <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{othersRow.times}</td>
                     </tr>
+                    {isOthersExpanded && othersDayTxs.length > 0 && othersDayTxs.map(tx => (
+                        <tr key={tx.id} className="bg-gray-50/20 text-[10px] animate-fade-in border-l-4 border-blue-500/30">
+                            <td colSpan={4} className="px-6 py-2.5">
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-gray-800 tracking-tight">{tx.category}</span>
+                                    {tx.note && <span className="text-gray-400 italic text-[9px] truncate max-w-[150px]">{tx.note}</span>}
+                                </div>
+                            </td>
+                            <td className="px-2 py-2.5 text-right font-mono font-bold text-blue-500">${f0(Math.abs(tx.amount))}</td>
+                            <td colSpan={2} className="px-2 py-2.5"></td>
+                        </tr>
+                    ))}
+                    {isOthersExpanded && othersDayTxs.length === 0 && (
+                        <tr className="bg-gray-50/20 italic animate-fade-in text-gray-400 text-[10px]">
+                            <td colSpan={7} className="px-8 py-4 text-center">No other expenses for this day.</td>
+                        </tr>
+                    )}
                 </tbody>
             </table>
         </div>
