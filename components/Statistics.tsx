@@ -53,19 +53,15 @@ const formatAccounting = (val: number) => {
     return `${sign}$${formattedNum}`;
 };
 
-/**
- * Helper to get neat whole numbers for chart domains
- */
 const getNiceDomain = (vals: number[]): [number, number] => {
     if (vals.length === 0) return [0, 1000];
-    const minVal = Math.min(...vals, 0); // Include 0 to ensure zero line visibility
+    const minVal = Math.min(...vals, 0); 
     const maxVal = Math.max(...vals, 100);
 
     const roundToNeat = (val: number, isUpper: boolean) => {
         if (val === 0) return 0;
         const absVal = Math.abs(val);
         const mag = Math.pow(10, Math.floor(Math.log10(absVal)));
-        // Use steps of 1, 2, 5, 10
         const steps = [1, 2, 5, 10].map(s => s * mag);
         
         if (isUpper) {
@@ -181,7 +177,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     if (allMonthlyBalances.length === 0) return { current: 0, change: 0, percent: 0, range: 'No data' };
     const safeIdx = Math.max(0, Math.min(activeWindowEndIndex, allMonthlyBalances.length - 1));
     const current = allMonthlyBalances[safeIdx]?.[assetView] || 0;
-    const prevIdx = Math.max(0, safeIdx - 11); // Range shows 12 months including current
+    const prevIdx = Math.max(0, safeIdx - 11); 
     const prev = allMonthlyBalances[prevIdx]?.[assetView] || 0;
     const change = current - prev;
     const percent = prev !== 0 ? (change / Math.abs(prev)) * 100 : (current > 0 ? 100 : 0);
@@ -295,7 +291,8 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   };
 
   /**
-   * Daily View Table implementation with breakdown of 'Others' category.
+   * Daily View Table implementation.
+   * 'Others' category breakdown shows all monthly transactions.
    */
   const DailyTableView = () => {
     const viewDate = startOfDay(addDays(new Date(), dateOffset));
@@ -322,11 +319,15 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     });
     
     const untrackedBudget = totalExpenseBudget - trackedBudgetSum;
-    const othersDayTxs = selectedDayTxs.filter(t => !trackedCats.includes(t.category));
-    const othersDaySpent = othersDayTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const othersDaySpent = selectedDayTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const othersMonthSpent = monthTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const othersMonthCount = monthTxs.filter(t => !trackedCats.includes(t.category) && Math.abs(t.amount) > 0).length;
     
+    // Monthly breakdown for 'Others' category, sorted newest first
+    const othersMonthTxs = monthTxs
+        .filter(t => !trackedCats.includes(t.category))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
     const othersRow = { 
         cat: 'Others', 
         budget: untrackedBudget, 
@@ -393,21 +394,38 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                         <td className={`px-2 py-3 text-right font-mono ${othersRow.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>${f0(othersRow.leftMonth)}</td>
                         <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{othersRow.times}</td>
                     </tr>
-                    {isOthersExpanded && othersDayTxs.length > 0 && othersDayTxs.map(tx => (
-                        <tr key={tx.id} className="bg-gray-50/20 text-[10px] animate-fade-in border-l-4 border-blue-500/30">
-                            <td colSpan={4} className="px-6 py-2.5">
-                                <div className="flex flex-col">
-                                    <span className="font-bold text-gray-800 tracking-tight">{tx.category}</span>
-                                    {tx.note && <span className="text-gray-400 italic text-[9px] truncate max-w-[150px]">{tx.note}</span>}
-                                </div>
-                            </td>
-                            <td className="px-2 py-2.5 text-right font-mono font-bold text-blue-500">${f0(Math.abs(tx.amount))}</td>
-                            <td colSpan={2} className="px-2 py-2.5"></td>
-                        </tr>
-                    ))}
-                    {isOthersExpanded && othersDayTxs.length === 0 && (
+                    {isOthersExpanded && othersMonthTxs.length > 0 && (
+                        <>
+                            <tr className="bg-blue-50/20">
+                                <td colSpan={7} className="px-4 py-2 border-t border-blue-100/30">
+                                    <p className="text-[10px] font-black text-blue-500/50 uppercase tracking-[0.2em] flex items-center gap-2">
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                        Monthly Breakdown for Others
+                                    </p>
+                                </td>
+                            </tr>
+                            {othersMonthTxs.map(tx => (
+                                <tr key={tx.id} className="bg-gray-50/20 text-[10px] animate-fade-in hover:bg-gray-100/50 border-l-4 border-blue-500/20">
+                                    <td colSpan={4} className="px-6 py-2.5">
+                                        <div className="flex flex-col">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-gray-800 tracking-tight">{tx.category}</span>
+                                                <span className="text-[9px] font-black text-blue-500 bg-blue-50/50 px-1 rounded uppercase tracking-tighter">
+                                                    {format(new Date(tx.date), 'MMM d')}
+                                                </span>
+                                            </div>
+                                            {tx.note && <span className="text-gray-400 italic text-[9px] truncate max-w-[200px] mt-0.5">{tx.note}</span>}
+                                        </div>
+                                    </td>
+                                    <td className="px-2 py-2.5 text-right font-mono font-black text-blue-600">${f0(Math.abs(tx.amount))}</td>
+                                    <td colSpan={2} className="px-2 py-2.5"></td>
+                                </tr>
+                            ))}
+                        </>
+                    )}
+                    {isOthersExpanded && othersMonthTxs.length === 0 && (
                         <tr className="bg-gray-50/20 italic animate-fade-in text-gray-400 text-[10px]">
-                            <td colSpan={7} className="px-8 py-4 text-center">No other expenses for this day.</td>
+                            <td colSpan={7} className="px-8 py-4 text-center">No other expenses recorded for this month.</td>
                         </tr>
                     )}
                 </tbody>
@@ -497,7 +515,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     return Array.from(monthlyDataMap.values());
   }, [sortedTransactions, monthlyFlowYear]);
 
-  // Neat Y-Axis Domain for Portfolio Trends
   const portfolioDomain = useMemo(() => {
     const vals = flowOverTimeData.flatMap(d => [d.income, d.expense, d.investment]);
     return getNiceDomain(vals);
