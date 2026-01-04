@@ -409,6 +409,11 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                                     <td colSpan={4} className="px-6 py-2.5">
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-2">
+                                                {settings.categoryIcons[tx.category] && (
+                                                  <span className="shrink-0 w-4 h-4 flex items-center justify-center bg-white/80 rounded-full text-[10px] shadow-sm ring-1 ring-blue-100/30">
+                                                      {settings.categoryIcons[tx.category]}
+                                                  </span>
+                                                )}
                                                 <span className="font-bold text-gray-800 tracking-tight">{tx.category}</span>
                                                 <span className="text-[9px] font-black text-blue-500 bg-white/50 px-1.5 rounded-md border border-blue-100/50 uppercase tracking-tighter shadow-sm">
                                                     {format(new Date(tx.date), 'MMM d')}
