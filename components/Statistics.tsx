@@ -81,7 +81,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   const [assetView, setAssetView] = useState<'wealth' | 'investment'>('wealth');
   const [dateOffset, setDateOffset] = useState(0); 
   const [monthlyFlowYear, setMonthlyFlowYear] = useState(new Date().getFullYear());
-  const [isOthersExpanded, setIsOthersExpanded] = useState(false);
+  const [expandedDailyCategories, setExpandedDailyCategories] = useState<Set<string>>(new Set());
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const spendingScrollRef = useRef<HTMLDivElement>(null);
@@ -130,7 +130,9 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             name: format(monthDate, 'MMM'), 
             date: monthDate, 
             wealth: monthIncome - monthExpense, 
-            investment: monthInvestment 
+            investment: monthInvestment,
+            income: monthIncome,
+            expense: monthExpense
         };
     });
   }, [sortedTransactions, settings.cumulativeStartMonth]);
@@ -292,7 +294,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
 
   /**
    * Daily View Table implementation.
-   * 'Others' category breakdown shows all monthly transactions.
    */
   const DailyTableView = () => {
     const viewDate = startOfDay(addDays(new Date(), dateOffset));
@@ -315,7 +316,12 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         const monthSpent = monthTxs.filter(t => t.category === cat).reduce((sum, t) => sum + Math.abs(t.amount), 0);
         const monthCount = monthTxs.filter(t => t.category === cat && Math.abs(t.amount) > 0).length;
         
-        return { cat, budget, freq, unit, daySpent, leftMonth: budget - monthSpent, times: monthCount };
+        // Detailed transactions for this category in the month
+        const categoryMonthTxs = monthTxs
+            .filter(t => t.category === cat)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        return { cat, budget, freq, unit, daySpent, leftMonth: budget - monthSpent, times: monthCount, txs: categoryMonthTxs };
     });
     
     const untrackedBudget = totalExpenseBudget - trackedBudgetSum;
@@ -323,7 +329,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     const othersMonthSpent = monthTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const othersMonthCount = monthTxs.filter(t => !trackedCats.includes(t.category) && Math.abs(t.amount) > 0).length;
     
-    // Monthly breakdown for 'Others' category, sorted newest first
     const othersMonthTxs = monthTxs
         .filter(t => !trackedCats.includes(t.category))
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -335,10 +340,58 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         unit: 0, 
         daySpent: othersDaySpent, 
         leftMonth: untrackedBudget - othersMonthSpent,
-        times: othersMonthCount
+        times: othersMonthCount,
+        txs: othersMonthTxs
     };
 
     const spentHeaderLabel = isToday(viewDate) ? 'Today' : format(viewDate, 'MMM d');
+
+    const toggleExpansion = (cat: string) => {
+        setExpandedDailyCategories(prev => {
+            const next = new Set(prev);
+            if (next.has(cat)) next.delete(cat);
+            else next.add(cat);
+            return next;
+        });
+    };
+
+    const renderDetailRows = (cat: string, txs: Transaction[]) => {
+        if (!expandedDailyCategories.has(cat) || txs.length === 0) return null;
+        return (
+            <>
+                <tr className="bg-blue-50/40">
+                    <td colSpan={7} className="px-4 py-2 border-t border-blue-200/30">
+                        <p className="text-[10px] font-black text-blue-600/60 uppercase tracking-[0.2em] flex items-center gap-2">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            Monthly Breakdown for {cat}
+                        </p>
+                    </td>
+                </tr>
+                {txs.map(tx => (
+                    <tr key={tx.id} className="bg-blue-50/30 text-[10px] animate-fade-in hover:bg-blue-100/40 border-l-4 border-blue-500/30">
+                        <td colSpan={4} className="px-6 py-2.5">
+                            <div className="flex flex-col">
+                                <div className="flex items-center gap-2">
+                                    {settings.categoryIcons[tx.category] && (
+                                      <span className="shrink-0 w-4 h-4 flex items-center justify-center bg-white/80 rounded-full text-[10px] shadow-sm ring-1 ring-blue-100/30">
+                                          {settings.categoryIcons[tx.category]}
+                                      </span>
+                                    )}
+                                    <span className="font-bold text-gray-800 tracking-tight">{tx.category}</span>
+                                    <span className="text-[9px] font-black text-blue-500 bg-white/50 px-1.5 rounded-md border border-blue-100/50 uppercase tracking-tighter shadow-sm">
+                                        {format(new Date(tx.date), 'MMM d')}
+                                    </span>
+                                </div>
+                                {tx.note && <span className="text-gray-400 italic text-[9px] truncate max-w-[200px] mt-0.5">{tx.note}</span>}
+                            </div>
+                        </td>
+                        <td className="px-2 py-2.5 text-right font-mono font-black text-blue-600">${f0(Math.abs(tx.amount))}</td>
+                        <td colSpan={2} className="px-2 py-2.5"></td>
+                    </tr>
+                ))}
+            </>
+        );
+    };
 
     return (
       <div className="space-y-4 animate-fade-in">
@@ -369,70 +422,45 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                     {rows.map(r => (
-                        <tr key={r.cat}>
-                            <td className="px-3 py-3 font-semibold text-gray-700">{getDisplayCategoryName(r.cat)}</td>
-                            <td className="px-2 py-3 text-right font-mono text-gray-600">${f0(r.budget)}</td>
-                            <td className="px-2 py-3 text-center font-mono text-gray-400">{r.freq > 0 ? r.freq : '--'}</td>
-                            <td className="px-2 py-3 text-right font-mono text-gray-400">{r.unit > 0 ? `$${f0(r.unit)}` : '$--'}</td>
-                            <td className={`px-2 py-3 text-right font-mono font-bold bg-blue-50/30 ${r.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>${f0(r.daySpent)}</td>
-                            <td className={`px-2 py-3 text-right font-mono ${r.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>${f0(r.leftMonth)}</td>
-                            <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{r.times}</td>
-                        </tr>
-                    ))}
-                    <tr 
-                      className="bg-gray-50/50 italic cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => setIsOthersExpanded(!isOthersExpanded)}
-                    >
-                        <td className="px-3 py-3 font-semibold text-gray-700 flex items-center gap-1.5">
-                            <svg className={`w-3 h-3 transition-transform text-gray-400 ${isOthersExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
-                            Others
-                        </td>
-                        <td className="px-2 py-3 text-right font-mono text-gray-600">${f0(othersRow.budget)}</td>
-                        <td className="px-2 py-3 text-center font-mono text-gray-400">--</td>
-                        <td className="px-2 py-3 text-right font-mono text-gray-400">$--</td>
-                        <td className={`px-2 py-3 text-right font-mono font-bold bg-blue-50/30 ${othersRow.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>${f0(othersRow.daySpent)}</td>
-                        <td className={`px-2 py-3 text-right font-mono ${othersRow.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>${f0(othersRow.leftMonth)}</td>
-                        <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{othersRow.times}</td>
-                    </tr>
-                    {isOthersExpanded && othersMonthTxs.length > 0 && (
-                        <>
-                            <tr className="bg-blue-50/40">
-                                <td colSpan={7} className="px-4 py-2 border-t border-blue-200/30">
-                                    <p className="text-[10px] font-black text-blue-600/60 uppercase tracking-[0.2em] flex items-center gap-2">
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                        Monthly Breakdown for Others
-                                    </p>
+                        <React.Fragment key={r.cat}>
+                            <tr 
+                                className="cursor-pointer hover:bg-gray-50 transition-colors"
+                                onClick={() => toggleExpansion(r.cat)}
+                            >
+                                <td className="px-3 py-3 font-semibold text-gray-700">
+                                    <div className="flex items-center gap-1.5">
+                                        <svg className={`w-3 h-3 transition-transform text-gray-400 ${expandedDailyCategories.has(r.cat) ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                                        {getDisplayCategoryName(r.cat)}
+                                    </div>
                                 </td>
+                                <td className="px-2 py-3 text-right font-mono text-gray-600">${f0(r.budget)}</td>
+                                <td className="px-2 py-3 text-center font-mono text-gray-400">{r.freq > 0 ? r.freq : '--'}</td>
+                                <td className="px-2 py-3 text-right font-mono text-gray-400">{r.unit > 0 ? `$${f0(r.unit)}` : '$--'}</td>
+                                <td className={`px-2 py-3 text-right font-mono font-bold bg-blue-50/30 ${r.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>${f0(r.daySpent)}</td>
+                                <td className={`px-2 py-3 text-right font-mono ${r.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>${f0(r.leftMonth)}</td>
+                                <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{r.times}</td>
                             </tr>
-                            {othersMonthTxs.map(tx => (
-                                <tr key={tx.id} className="bg-blue-50/30 text-[10px] animate-fade-in hover:bg-blue-100/40 border-l-4 border-blue-500/30">
-                                    <td colSpan={4} className="px-6 py-2.5">
-                                        <div className="flex flex-col">
-                                            <div className="flex items-center gap-2">
-                                                {settings.categoryIcons[tx.category] && (
-                                                  <span className="shrink-0 w-4 h-4 flex items-center justify-center bg-white/80 rounded-full text-[10px] shadow-sm ring-1 ring-blue-100/30">
-                                                      {settings.categoryIcons[tx.category]}
-                                                  </span>
-                                                )}
-                                                <span className="font-bold text-gray-800 tracking-tight">{tx.category}</span>
-                                                <span className="text-[9px] font-black text-blue-500 bg-white/50 px-1.5 rounded-md border border-blue-100/50 uppercase tracking-tighter shadow-sm">
-                                                    {format(new Date(tx.date), 'MMM d')}
-                                                </span>
-                                            </div>
-                                            {tx.note && <span className="text-gray-400 italic text-[9px] truncate max-w-[200px] mt-0.5">{tx.note}</span>}
-                                        </div>
-                                    </td>
-                                    <td className="px-2 py-2.5 text-right font-mono font-black text-blue-600">${f0(Math.abs(tx.amount))}</td>
-                                    <td colSpan={2} className="px-2 py-2.5"></td>
-                                </tr>
-                            ))}
-                        </>
-                    )}
-                    {isOthersExpanded && othersMonthTxs.length === 0 && (
-                        <tr className="bg-blue-50/20 italic animate-fade-in text-gray-400 text-[10px]">
-                            <td colSpan={7} className="px-8 py-4 text-center">No other expenses recorded for this month.</td>
+                            {renderDetailRows(r.cat, r.txs)}
+                        </React.Fragment>
+                    ))}
+                    <React.Fragment key="Others">
+                        <tr 
+                          className="bg-gray-50/50 italic cursor-pointer hover:bg-gray-100 transition-colors"
+                          onClick={() => toggleExpansion('Others')}
+                        >
+                            <td className="px-3 py-3 font-semibold text-gray-700 flex items-center gap-1.5">
+                                <svg className={`w-3 h-3 transition-transform text-gray-400 ${expandedDailyCategories.has('Others') ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                                Others
+                            </td>
+                            <td className="px-2 py-3 text-right font-mono text-gray-600">${f0(othersRow.budget)}</td>
+                            <td className="px-2 py-3 text-center font-mono text-gray-400">--</td>
+                            <td className="px-2 py-3 text-right font-mono text-gray-400">$--</td>
+                            <td className={`px-2 py-3 text-right font-mono font-bold bg-blue-50/30 ${othersRow.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>${f0(othersRow.daySpent)}</td>
+                            <td className={`px-2 py-3 text-right font-mono ${othersRow.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>${f0(othersRow.leftMonth)}</td>
+                            <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{othersRow.times}</td>
                         </tr>
-                    )}
+                        {renderDetailRows('Others', othersRow.txs)}
+                    </React.Fragment>
                 </tbody>
             </table>
         </div>
@@ -440,9 +468,56 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     );
   };
 
-  const CenteredAnalysisPopup = ({ active, payload }: any) => {
+  const CenteredAnalysisPopup = ({ active, payload, type = 'spending' }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
+      
+      if (type === 'asset') {
+          const displayDate = format(data.date, 'MMMM yyyy');
+          return (
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-6 pointer-events-none transition-all animate-fade-in">
+                <div className="rounded-[2.5rem] bg-white border border-gray-100 flex flex-col overflow-hidden shadow-[0_50px_100px_-20px_rgba(0,0,0,0.4)] min-w-[320px] max-w-[95%] pointer-events-auto scale-100">
+                    <div className="px-8 pt-8 pb-5 border-b border-gray-50 bg-gray-50/50">
+                        <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.3em] mb-1.5">Monthly Asset Summary</p>
+                        <p className="text-[20px] font-black text-gray-900 tracking-tight leading-none">{displayDate}</p>
+                    </div>
+                    <div className="flex flex-col p-8 space-y-6">
+                        <div className="flex items-center justify-between gap-8">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-3 h-3 rounded-full shrink-0 shadow-sm bg-green-500" />
+                                <span className="text-[14px] font-bold text-gray-700 tracking-tight uppercase tracking-widest text-[10px]">Total Income</span>
+                            </div>
+                            <span className="text-[16px] font-mono font-black text-green-600 whitespace-nowrap">${f1(data.income)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-8">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-3 h-3 rounded-full shrink-0 shadow-sm bg-red-500" />
+                                <span className="text-[14px] font-bold text-gray-700 tracking-tight uppercase tracking-widest text-[10px]">Total Expense</span>
+                            </div>
+                            <span className="text-[16px] font-mono font-black text-red-600 whitespace-nowrap">${f1(data.expense)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-8 pt-4 border-t border-gray-50">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-3 h-3 rounded-full shrink-0 shadow-sm bg-blue-500" />
+                                <span className="text-[14px] font-bold text-gray-700 tracking-tight uppercase tracking-widest text-[10px]">Total Investment</span>
+                            </div>
+                            <span className="text-[16px] font-mono font-black text-blue-600 whitespace-nowrap">${f1(data.investment)}</span>
+                        </div>
+
+                        <div className="pt-6 border-t-2 border-gray-100 mt-2 flex justify-between items-center">
+                            <span className="text-[12px] font-black text-gray-400 uppercase tracking-widest">Net Wealth Change</span>
+                            <span className={`text-[22px] font-mono font-black leading-none ${data.wealth >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                {data.wealth >= 0 ? '+' : ''}${f1(data.wealth)}
+                            </span>
+                        </div>
+                    </div>
+                    <button onClick={() => setActivePopupData(null)} className="bg-gray-900 text-white py-5 font-black text-[11px] uppercase tracking-[0.4em] active:bg-gray-800 transition-colors w-full">Dismiss</button>
+                </div>
+            </div>
+          );
+      }
+
+      // Default Spending Analysis popup
       const displayDate = data.rawDate 
         ? (period === 'W' ? format(data.rawDate, 'MMMM do, yyyy') : format(data.rawDate, 'MMMM yyyy')) 
         : data.name;
@@ -576,7 +651,11 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                     <div style={{ width: `${Math.max(100, (allMonthlyBalances.length / 12) * 100)}%`, minWidth: '100%', height: '100%' }} className="relative block pointer-events-none">
                         <div className="pointer-events-auto w-full h-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={allMonthlyBalances} margin={{ top: 10, right: 60, left: 0, bottom: 5 }}>
+                                <AreaChart 
+                                    data={allMonthlyBalances} 
+                                    margin={{ top: 10, right: 60, left: 0, bottom: 5 }}
+                                    onMouseDown={(data: any) => { if (data && data.activePayload) setActivePopupData({ active: true, payload: data.activePayload, type: 'asset' }); }}
+                                >
                                     <defs>
                                         <linearGradient id="assetSplitFill" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset={gradientOffset} stopColor="#10b981" stopOpacity={0.2} />
@@ -586,12 +665,37 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                                             <stop offset={gradientOffset} stopColor="#10b981" stopOpacity={1} />
                                             <stop offset={gradientOffset} stopColor="#ef4444" stopOpacity={1} />
                                         </linearGradient>
+                                        <filter id="iosShadow" height="200%">
+                                            <feGaussianBlur in="SourceAlpha" stdDeviation="2.5" />
+                                            <feOffset dx="0" dy="4" result="offsetblur" />
+                                            <feComponentTransfer>
+                                                <feFuncA type="linear" slope="0.3" />
+                                            </feComponentTransfer>
+                                            <feMerge>
+                                                <feMergeNode />
+                                                <feMergeNode in="SourceGraphic" />
+                                            </feMerge>
+                                        </filter>
                                     </defs>
                                     <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f1f5f9" />
                                     <XAxis dataKey="name" tick={{fontSize: 8, fontWeight: 700, fill: '#cbd5e1'}} tickFormatter={(v) => v.charAt(0)} stroke="none" dy={5} interval={0} padding={{ left: 10, right: 10 }} />
                                     <YAxis hide domain={assetChartDomain} />
                                     <ReferenceLine y={0} stroke="#cbd5e1" strokeDasharray="3 3" />
-                                    <Area type="monotone" dataKey={assetView} stroke="url(#assetSplitStroke)" strokeWidth={3} fillOpacity={1} fill="url(#assetSplitFill)" isAnimationActive={false} dot={{ r: 3, fill: '#94a3b8', strokeWidth: 0, stroke: '#fff' }} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }} />
+                                    <Area 
+                                        type="natural" 
+                                        dataKey={assetView} 
+                                        stroke="url(#assetSplitStroke)" 
+                                        strokeWidth={4} 
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        fillOpacity={1} 
+                                        fill="url(#assetSplitFill)" 
+                                        isAnimationActive={false} 
+                                        filter="url(#iosShadow)"
+                                        dot={{ r: 3.5, fill: '#94a3b8', strokeWidth: 1.5, stroke: '#fff' }} 
+                                        activeDot={{ r: 7, strokeWidth: 3, stroke: '#fff' }} 
+                                    />
+                                    <Tooltip content={() => null} />
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
@@ -637,7 +741,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                         <div style={{ width: `${Math.max(100, (spendingChartData.length / (period === 'W' ? 7 : 12)) * 100)}%`, minWidth: '100%', height: '100%' }} className="relative block pointer-events-none">
                             <div className="pointer-events-auto w-full h-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={spendingChartData} margin={{ top: 0, right: 60, left: 5, bottom: 0 }} barGap={6} onMouseDown={(data: any) => { if (data && data.activePayload) setActivePopupData({ active: true, payload: data.activePayload }); }}>
+                                    <BarChart data={spendingChartData} margin={{ top: 0, right: 60, left: 5, bottom: 0 }} barGap={6} onMouseDown={(data: any) => { if (data && data.activePayload) setActivePopupData({ active: true, payload: data.activePayload, type: 'spending' }); }}>
                                         <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f1f5f9" />
                                         <XAxis dataKey="name" tick={{fontSize: 9, fontWeight: 700, fill: '#94a3b8'}} stroke="none" dy={10} interval={0} />
                                         <YAxis hide domain={[0, visibleMax]} />
@@ -675,7 +779,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             </div>
         </div>
 
-        {activePopupData && <CenteredAnalysisPopup active={activePopupData.active} payload={activePopupData.payload} />}
+        {activePopupData && <CenteredAnalysisPopup active={activePopupData.active} payload={activePopupData.payload} type={activePopupData.type} />}
 
        <div className="bg-white p-6 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 overflow-visible select-none">
           <div className="flex justify-between items-start mb-8 relative z-30 bg-white">
