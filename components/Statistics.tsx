@@ -81,7 +81,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   const [assetView, setAssetView] = useState<'wealth' | 'investment'>('wealth');
   const [dateOffset, setDateOffset] = useState(0); 
   const [monthlyFlowYear, setMonthlyFlowYear] = useState(new Date().getFullYear());
-  const [isOthersExpanded, setIsOthersExpanded] = useState(false);
+  const [expandedDailyCats, setExpandedDailyCats] = useState<Record<string, boolean>>({});
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const spendingScrollRef = useRef<HTMLDivElement>(null);
@@ -323,19 +323,54 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     const othersMonthSpent = monthTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const othersMonthCount = monthTxs.filter(t => !trackedCats.includes(t.category) && Math.abs(t.amount) > 0).length;
     
-    // Monthly breakdown for 'Others' category, sorted newest first
-    const othersMonthTxs = monthTxs
-        .filter(t => !trackedCats.includes(t.category))
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const toggleCat = (cat: string) => {
+        setExpandedDailyCats(prev => ({ ...prev, [cat]: !prev[cat] }));
+    };
 
-    const othersRow = { 
-        cat: 'Others', 
-        budget: untrackedBudget, 
-        freq: 0, 
-        unit: 0, 
-        daySpent: othersDaySpent, 
-        leftMonth: untrackedBudget - othersMonthSpent,
-        times: othersMonthCount
+    const renderBreakdown = (catName: string, items: Transaction[]) => {
+        const sorted = [...items].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        if (sorted.length === 0) {
+            return (
+                <tr key={`${catName}-empty`} className="bg-blue-50/20 italic animate-fade-in text-gray-400 text-[10px]">
+                    <td colSpan={7} className="px-8 py-4 text-center">No transactions recorded for this category this month.</td>
+                </tr>
+            );
+        }
+
+        return (
+            <React.Fragment key={`${catName}-breakdown`}>
+                <tr className="bg-blue-50/40">
+                    <td colSpan={7} className="px-4 py-2 border-t border-blue-200/30">
+                        <p className="text-[10px] font-black text-blue-600/60 uppercase tracking-[0.2em] flex items-center gap-2">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            Monthly Breakdown for {catName}
+                        </p>
+                    </td>
+                </tr>
+                {sorted.map(tx => (
+                    <tr key={tx.id} className="bg-blue-50/30 text-[10px] animate-fade-in hover:bg-blue-100/40 border-l-4 border-blue-500/30">
+                        <td colSpan={4} className="px-6 py-2.5">
+                            <div className="flex flex-col">
+                                <div className="flex items-center gap-2">
+                                    {settings.categoryIcons[tx.category] && (
+                                      <span className="shrink-0 w-4 h-4 flex items-center justify-center bg-white/80 rounded-full text-[10px] shadow-sm ring-1 ring-blue-100/30">
+                                          {settings.categoryIcons[tx.category]}
+                                      </span>
+                                    )}
+                                    <span className="font-bold text-gray-800 tracking-tight">{tx.category}</span>
+                                    <span className="text-[9px] font-black text-blue-500 bg-white/50 px-1.5 rounded-md border border-blue-100/50 uppercase tracking-tighter shadow-sm">
+                                        {format(new Date(tx.date), 'EEE, MMM d')}
+                                    </span>
+                                </div>
+                                {tx.note && <span className="text-gray-400 italic text-[9px] truncate max-w-[200px] mt-0.5">{tx.note}</span>}
+                            </div>
+                        </td>
+                        <td className="px-2 py-2.5 text-right font-mono font-black text-blue-600">${f0(Math.abs(tx.amount))}</td>
+                        <td colSpan={2} className="px-2 py-2.5"></td>
+                    </tr>
+                ))}
+            </React.Fragment>
+        );
     };
 
     const spentHeaderLabel = isToday(viewDate) ? 'Today' : format(viewDate, 'MMM d');
@@ -369,70 +404,38 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                     {rows.map(r => (
-                        <tr key={r.cat}>
-                            <td className="px-3 py-3 font-semibold text-gray-700">{getDisplayCategoryName(r.cat)}</td>
-                            <td className="px-2 py-3 text-right font-mono text-gray-600">${f0(r.budget)}</td>
-                            <td className="px-2 py-3 text-center font-mono text-gray-400">{r.freq > 0 ? r.freq : '--'}</td>
-                            <td className="px-2 py-3 text-right font-mono text-gray-400">{r.unit > 0 ? `$${f0(r.unit)}` : '$--'}</td>
-                            <td className={`px-2 py-3 text-right font-mono font-bold bg-blue-50/30 ${r.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>${f0(r.daySpent)}</td>
-                            <td className={`px-2 py-3 text-right font-mono ${r.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>${f0(r.leftMonth)}</td>
-                            <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{r.times}</td>
-                        </tr>
+                        <React.Fragment key={r.cat}>
+                            <tr onClick={() => toggleCat(r.cat)} className="cursor-pointer hover:bg-gray-50 transition-colors">
+                                <td className="px-3 py-3 font-semibold text-gray-700 flex items-center gap-1.5">
+                                    <svg className={`w-3 h-3 transition-transform text-gray-400 ${expandedDailyCats[r.cat] ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                                    {getDisplayCategoryName(r.cat)}
+                                </td>
+                                <td className="px-2 py-3 text-right font-mono text-gray-600">${f0(r.budget)}</td>
+                                <td className="px-2 py-3 text-center font-mono text-gray-400">{r.freq > 0 ? r.freq : '--'}</td>
+                                <td className="px-2 py-3 text-right font-mono text-gray-400">{r.unit > 0 ? `$${f0(r.unit)}` : '$--'}</td>
+                                <td className={`px-2 py-3 text-right font-mono font-bold bg-blue-50/30 ${r.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>${f0(r.daySpent)}</td>
+                                <td className={`px-2 py-3 text-right font-mono ${r.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>${f0(r.leftMonth)}</td>
+                                <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{r.times}</td>
+                            </tr>
+                            {expandedDailyCats[r.cat] && renderBreakdown(r.cat, monthTxs.filter(tx => tx.category === r.cat))}
+                        </React.Fragment>
                     ))}
                     <tr 
                       className="bg-gray-50/50 italic cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => setIsOthersExpanded(!isOthersExpanded)}
+                      onClick={() => toggleCat('Others')}
                     >
                         <td className="px-3 py-3 font-semibold text-gray-700 flex items-center gap-1.5">
-                            <svg className={`w-3 h-3 transition-transform text-gray-400 ${isOthersExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                            <svg className={`w-3 h-3 transition-transform text-gray-400 ${expandedDailyCats['Others'] ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
                             Others
                         </td>
-                        <td className="px-2 py-3 text-right font-mono text-gray-600">${f0(othersRow.budget)}</td>
+                        <td className="px-2 py-3 text-right font-mono text-gray-600">${f0(untrackedBudget)}</td>
                         <td className="px-2 py-3 text-center font-mono text-gray-400">--</td>
                         <td className="px-2 py-3 text-right font-mono text-gray-400">$--</td>
-                        <td className={`px-2 py-3 text-right font-mono font-bold bg-blue-50/30 ${othersRow.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>${f0(othersRow.daySpent)}</td>
-                        <td className={`px-2 py-3 text-right font-mono ${othersRow.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>${f0(othersRow.leftMonth)}</td>
-                        <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{othersRow.times}</td>
+                        <td className={`px-2 py-3 text-right font-mono font-bold bg-blue-50/30 ${othersDaySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>${f0(othersDaySpent)}</td>
+                        <td className={`px-2 py-3 text-right font-mono ${untrackedBudget - othersMonthSpent < 0 ? 'text-red-500' : 'text-green-600'}`}>${f0(untrackedBudget - othersMonthSpent)}</td>
+                        <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{othersMonthCount}</td>
                     </tr>
-                    {isOthersExpanded && othersMonthTxs.length > 0 && (
-                        <>
-                            <tr className="bg-blue-50/40">
-                                <td colSpan={7} className="px-4 py-2 border-t border-blue-200/30">
-                                    <p className="text-[10px] font-black text-blue-600/60 uppercase tracking-[0.2em] flex items-center gap-2">
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                        Monthly Breakdown for Others
-                                    </p>
-                                </td>
-                            </tr>
-                            {othersMonthTxs.map(tx => (
-                                <tr key={tx.id} className="bg-blue-50/30 text-[10px] animate-fade-in hover:bg-blue-100/40 border-l-4 border-blue-500/30">
-                                    <td colSpan={4} className="px-6 py-2.5">
-                                        <div className="flex flex-col">
-                                            <div className="flex items-center gap-2">
-                                                {settings.categoryIcons[tx.category] && (
-                                                  <span className="shrink-0 w-4 h-4 flex items-center justify-center bg-white/80 rounded-full text-[10px] shadow-sm ring-1 ring-blue-100/30">
-                                                      {settings.categoryIcons[tx.category]}
-                                                  </span>
-                                                )}
-                                                <span className="font-bold text-gray-800 tracking-tight">{tx.category}</span>
-                                                <span className="text-[9px] font-black text-blue-500 bg-white/50 px-1.5 rounded-md border border-blue-100/50 uppercase tracking-tighter shadow-sm">
-                                                    {format(new Date(tx.date), 'MMM d')}
-                                                </span>
-                                            </div>
-                                            {tx.note && <span className="text-gray-400 italic text-[9px] truncate max-w-[200px] mt-0.5">{tx.note}</span>}
-                                        </div>
-                                    </td>
-                                    <td className="px-2 py-2.5 text-right font-mono font-black text-blue-600">${f0(Math.abs(tx.amount))}</td>
-                                    <td colSpan={2} className="px-2 py-2.5"></td>
-                                </tr>
-                            ))}
-                        </>
-                    )}
-                    {isOthersExpanded && othersMonthTxs.length === 0 && (
-                        <tr className="bg-blue-50/20 italic animate-fade-in text-gray-400 text-[10px]">
-                            <td colSpan={7} className="px-8 py-4 text-center">No other expenses recorded for this month.</td>
-                        </tr>
-                    )}
+                    {expandedDailyCats['Others'] && renderBreakdown('Others', monthTxs.filter(tx => !trackedCats.includes(tx.category)))}
                 </tbody>
             </table>
         </div>
