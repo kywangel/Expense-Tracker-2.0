@@ -26,6 +26,7 @@ const Settings: React.FC<SettingsProps> = ({
   const [formUrl, setFormUrl] = useState(settings.sheetDbUrl);
   const [saved, setSaved] = useState(false);
   const [showDailyBudgeting, setShowDailyBudgeting] = useState(false);
+  const [showWidgetGuide, setShowWidgetGuide] = useState(false);
   const [storageUsed, setStorageUsed] = useState<string>('0');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,7 +35,6 @@ const Settings: React.FC<SettingsProps> = ({
 
   useEffect(() => {
     setFormUrl(settings.sheetDbUrl);
-    // Calculate approximate storage usage
     const size = JSON.stringify(localStorage).length;
     setStorageUsed((size / 1024).toFixed(1));
   }, [settings, transactions]);
@@ -124,8 +124,38 @@ const Settings: React.FC<SettingsProps> = ({
            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
          </div>
          <p className="text-[11px] text-blue-800 leading-normal">
-            <strong>Pro Tip:</strong> To prevent data loss, tap the "Share" icon and <strong>Add to Home Screen</strong>. This keeps your data separate from regular browser tabs which iOS may clear after 7 days of inactivity.
+            <strong>Pro Tip:</strong> To prevent data loss, tap the "Share" icon and <strong>Add to Home Screen</strong>. This keeps your data separate from regular browser tabs.
          </p>
+      </div>
+
+      {/* Widget Guide Section */}
+      <div className="bg-gray-900 p-6 rounded-[2rem] text-white shadow-xl relative overflow-hidden">
+        <div className="flex justify-between items-start mb-4">
+            <div>
+                <h3 className="font-bold text-lg">Daily Analysis Widget</h3>
+                <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest mt-1">Glance at your table instantly</p>
+            </div>
+            <button onClick={() => setShowWidgetGuide(!showWidgetGuide)} className="bg-white/10 p-2 rounded-full">
+                <svg className={`w-5 h-5 transition-transform ${showWidgetGuide ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            </button>
+        </div>
+        
+        {showWidgetGuide && (
+            <div className="space-y-4 animate-fade-in text-xs leading-relaxed opacity-90">
+                <p>To see the **Spending Analysis Table** on your home screen:</p>
+                <ol className="list-decimal pl-5 space-y-2">
+                    <li>Open the <strong>iOS Shortcuts</strong> app.</li>
+                    <li>Tap <strong>+</strong> to create a new shortcut.</li>
+                    <li>Add the action: <strong>Open URL</strong>.</li>
+                    <li>Paste this exact URL: <code className="bg-white/10 px-1 rounded select-all font-mono text-blue-300">{window.location.origin}/?view=widget</code></li>
+                    <li>Name it "Daily Stats" and save it.</li>
+                    <li>Long-press your home screen, tap **+**, search **Shortcuts**, and add a **Medium/Large** widget for this shortcut.</li>
+                </ol>
+                <div className="bg-white/5 p-3 rounded-xl border border-white/10 text-[10px] italic">
+                    Note: Ensure you have already used "Add to Home Screen" for the main app for the best experience.
+                </div>
+            </div>
+        )}
       </div>
 
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100">

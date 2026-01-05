@@ -26,5 +26,28 @@
       "sizes": "any",
       "type": "image/svg+xml"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add Entry",
+      "short_name": "Add",
+      "description": "Quickly add a new transaction",
+      "url": "/?view=add",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "View Summary",
+      "short_name": "Widget",
+      "description": "Glance at your current budget status",
+      "url": "/?view=widget",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Statistics",
+      "short_name": "Stats",
+      "description": "View detailed analysis",
+      "url": "/?view=statistics",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    }
   ]
 }

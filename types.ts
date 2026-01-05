@@ -63,5 +63,6 @@ export enum AppView {
   BUDGET = 'budget', 
   DATABASE = 'database', 
   SETTINGS = 'settings',
-  EDIT_CATEGORIES = 'edit_categories'
+  EDIT_CATEGORIES = 'edit_categories',
+  WIDGET = 'widget'
 }
