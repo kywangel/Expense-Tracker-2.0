@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Transaction, AppSettings } from '../types';
 import { 
@@ -355,6 +354,10 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     const othersMonthSpent = monthTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const othersMonthCount = monthTxs.filter(t => !trackedCats.includes(t.category) && Math.abs(t.amount) > 0).length;
     
+    const totalDaySpent = rows.reduce((s, r) => s + r.daySpent, 0) + othersDaySpent;
+    const totalLeftMonthVal = rows.reduce((s, r) => s + r.leftMonth, 0) + (untrackedBudget - othersMonthSpent);
+    const totalTimesVal = rows.reduce((s, r) => s + r.times, 0) + othersMonthCount;
+
     const toggleCat = (cat: string) => {
         setExpandedDailyCats(prev => ({ ...prev, [cat]: !prev[cat] }));
     };
@@ -468,6 +471,15 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                         <td className="px-2 py-3 text-center font-mono font-bold text-gray-700">{othersMonthCount}</td>
                     </tr>
                     {expandedDailyCats['Others'] && renderBreakdown('Others', monthTxs.filter(tx => !trackedCats.includes(tx.category)))}
+                    <tr className="bg-blue-50/80 font-black border-t-2 border-blue-100">
+                        <td className="px-3 py-3 text-blue-900 uppercase tracking-tighter">Total Spending</td>
+                        <td className="px-2 py-3 text-right font-mono text-blue-900/60">${f0(totalExpenseBudget)}</td>
+                        <td className="px-2 py-3 text-center font-mono text-gray-400">--</td>
+                        <td className="px-2 py-3 text-right font-mono text-gray-400">$--</td>
+                        <td className="px-2 py-3 text-right font-mono text-blue-800 bg-blue-100/60 shadow-inner">${f0(totalDaySpent)}</td>
+                        <td className={`px-2 py-3 text-right font-mono ${totalLeftMonthVal < 0 ? 'text-red-600' : 'text-green-700'}`}>${f0(totalLeftMonthVal)}</td>
+                        <td className="px-2 py-3 text-center font-mono text-blue-900">{totalTimesVal}</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
