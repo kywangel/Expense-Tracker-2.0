@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Transaction, AppSettings } from '../types';
 import { 
@@ -61,7 +62,8 @@ const getNiceDomain = (vals: number[]): [number, number] => {
     const roundToNeat = (val: number, isUpper: boolean) => {
         if (val === 0) return 0;
         const absVal = Math.abs(val);
-        const mag = Math.pow(10, Math.floor(6, Math.log10(absVal)));
+        // Fix: Math.floor only accepts 1 argument. Removed stray '6' argument.
+        const mag = Math.pow(10, Math.floor(Math.log10(absVal)));
         const steps = [1, 2, 5, 10].map(s => s * mag);
         
         if (isUpper) {
