@@ -61,7 +61,7 @@ const getNiceDomain = (vals: number[]): [number, number] => {
     const roundToNeat = (val: number, isUpper: boolean) => {
         if (val === 0) return 0;
         const absVal = Math.abs(val);
-        const mag = Math.pow(10, Math.floor(Math.log10(absVal)));
+        const mag = Math.pow(10, Math.floor(6, Math.log10(absVal)));
         const steps = [1, 2, 5, 10].map(s => s * mag);
         
         if (isUpper) {
@@ -108,29 +108,59 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     const end = endOfMonth(new Date());
     const months = eachMonthOfInterval({ start, end });
     
+    let runningWealth = 0;
+    let runningInvestment = 0;
+    let runningCumIncome = 0;
+    let runningCumExpense = 0;
+
+    // Pre-calculate initial totals from transactions BEFORE the start date
+    sortedTransactions.forEach(tx => {
+        const d = new Date(tx.date);
+        if (d < start) {
+            if (tx.type === 'income') {
+                runningWealth += Math.abs(tx.amount);
+                runningCumIncome += Math.abs(tx.amount);
+            }
+            if (tx.type === 'expense') {
+                runningWealth -= Math.abs(tx.amount);
+                runningCumExpense += Math.abs(tx.amount);
+            }
+            if (tx.type === 'investment') {
+                runningInvestment += Math.abs(tx.amount);
+            }
+        }
+    });
+
     return months.map(monthDate => {
         const mStart = startOfMonth(monthDate);
         const mEnd = endOfMonth(monthDate);
+        
         const monthTxs = sortedTransactions.filter(tx => {
             const d = new Date(tx.date);
             return d >= mStart && d <= mEnd;
         });
 
-        let monthIncome = 0;
-        let monthExpense = 0;
-        let monthInvestment = 0;
-
         monthTxs.forEach(tx => {
-            if (tx.type === 'income') monthIncome += Math.abs(tx.amount);
-            if (tx.type === 'expense') monthExpense += Math.abs(tx.amount);
-            if (tx.type === 'investment') monthInvestment += Math.abs(tx.amount);
+            if (tx.type === 'income') {
+                runningWealth += Math.abs(tx.amount);
+                runningCumIncome += Math.abs(tx.amount);
+            }
+            if (tx.type === 'expense') {
+                runningWealth -= Math.abs(tx.amount);
+                runningCumExpense += Math.abs(tx.amount);
+            }
+            if (tx.type === 'investment') {
+                runningInvestment += Math.abs(tx.amount);
+            }
         });
 
         return { 
             name: format(monthDate, 'MMM'), 
             date: monthDate, 
-            wealth: monthIncome - monthExpense, 
-            investment: monthInvestment 
+            wealth: runningWealth, 
+            investment: runningInvestment,
+            cumIncome: runningCumIncome,
+            cumExpense: runningCumExpense
         };
     });
   }, [sortedTransactions, settings.cumulativeStartMonth]);
@@ -146,7 +176,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   const startX = useRef(0);
   const scrollLeftState = useRef(0);
 
-  const onMouseDown = (e: React.MouseEvent, ref: React.RefObject<HTMLDivElement | null>) => {
+  const onMouseDown = (e: React.MouseEvent, ref: React.RefObject<HTMLDivElement | null>, chartType: 'asset' | 'spending') => {
     if (!ref.current) return;
     isDragging.current = true;
     startX.current = e.pageX - ref.current.offsetLeft;
@@ -443,61 +473,105 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     );
   };
 
-  const CenteredAnalysisPopup = ({ active, payload }: any) => {
+  const CenteredAnalysisPopup = ({ active, payload, type }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
-      const displayDate = data.rawDate 
-        ? (period === 'W' ? format(data.rawDate, 'MMMM do, yyyy') : format(data.rawDate, 'MMMM yyyy')) 
-        : data.name;
-        
-      const validItems = payload.filter((item: any) => item.value !== undefined && item.value > 0);
-      const sortedAll = [...validItems].sort((a: any, b: any) => b.value - a.value);
-      const top5 = sortedAll.slice(0, 5);
-      const othersVal = sortedAll.slice(5).reduce((s, i) => s + i.value, 0);
-      const total = sortedAll.reduce((s, i) => s + i.value, 0);
       
-      return (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-6 pointer-events-none transition-all animate-fade-in">
-          <div className="rounded-[2.5rem] bg-white border border-gray-100 flex flex-col overflow-hidden shadow-[0_50px_100px_-20px_rgba(0,0,0,0.4)] min-w-[320px] max-w-[95%] pointer-events-auto scale-100">
-            <div className="px-8 pt-8 pb-5 border-b border-gray-50 bg-gray-50/50">
-              <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.3em] mb-1.5">Period Analysis</p>
-              <p className="text-[20px] font-black text-gray-900 tracking-tight leading-none">{displayDate}</p>
-            </div>
-            <div className="flex flex-col p-8 space-y-4">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Spending Categories</span>
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Amount</span>
-              </div>
-              {top5.map((item: any, idx: number) => (
-                <div key={idx} className="flex items-center justify-between gap-8">
-                  <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-3 h-3 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: item.color }} />
-                      <span className="text-[14px] font-bold truncate text-gray-700 tracking-tight">{getDisplayCategoryName(item.name)}</span>
-                  </div>
-                  <span className="text-[14px] font-mono font-black text-gray-900 whitespace-nowrap">${f1(item.value)}</span>
+      if (type === 'asset') {
+          const displayDate = format(data.date, 'MMMM yyyy');
+          const value = assetView === 'wealth' ? data.wealth : data.investment;
+          
+          return (
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-6 pointer-events-none transition-all animate-fade-in">
+              <div className="rounded-[2.5rem] bg-white border border-gray-100 flex flex-col overflow-hidden shadow-[0_50px_100px_-20px_rgba(0,0,0,0.4)] min-w-[320px] max-w-[95%] pointer-events-auto scale-100">
+                <div className="px-8 pt-8 pb-5 border-b border-gray-50 bg-gray-50/50">
+                  <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.3em] mb-1.5">Asset Summary</p>
+                  <p className="text-[20px] font-black text-gray-900 tracking-tight leading-none">{displayDate}</p>
                 </div>
-              ))}
-              {othersVal > 0 && (
-                <div className="flex items-center justify-between gap-8 pt-1 border-t border-gray-50">
-                  <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-3 h-3 rounded-full shrink-0 shadow-sm bg-gray-200" />
-                      <span className="text-[14px] font-bold truncate text-gray-400 italic">Others</span>
-                  </div>
-                  <span className="text-[14px] font-mono font-bold text-gray-400 whitespace-nowrap">${f1(othersVal)}</span>
+                <div className="flex flex-col p-8 space-y-6">
+                  {assetView === 'wealth' ? (
+                    <>
+                        <div className="flex justify-between items-center">
+                            <span className="text-[12px] font-black text-gray-400 uppercase tracking-widest">Cumulative Income</span>
+                            <span className="text-[16px] font-mono font-black text-green-600">${f1(data.cumIncome)}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-[12px] font-black text-gray-400 uppercase tracking-widest">Cumulative Expense</span>
+                            <span className="text-[16px] font-mono font-black text-red-500">-${f1(data.cumExpense)}</span>
+                        </div>
+                        <div className="pt-6 border-t-2 border-gray-100 flex justify-between items-center">
+                            <span className="text-[12px] font-black text-gray-400 uppercase tracking-widest">Net Asset</span>
+                            <span className={`text-[22px] font-mono font-black leading-none ${data.wealth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {data.wealth < 0 ? '-' : ''}${f1(Math.abs(data.wealth))}
+                            </span>
+                        </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between items-center">
+                        <span className="text-[12px] font-black text-gray-400 uppercase tracking-widest">Total Investment</span>
+                        <span className="text-[22px] font-mono font-black text-blue-600 leading-none">${f1(data.investment)}</span>
+                    </div>
+                  )}
                 </div>
-              )}
-              {validItems.length === 0 && (
-                <div className="py-10 text-center text-gray-300 font-bold uppercase text-[10px] tracking-widest">No Data Recorded</div>
-              )}
-              <div className="pt-6 border-t-2 border-gray-100 mt-2 flex justify-between items-center">
-                  <span className="text-[12px] font-black text-gray-400 uppercase tracking-widest">Total Expenses</span>
-                  <span className="text-[22px] font-mono font-black text-blue-600 leading-none">${f1(total)}</span>
+                <button onClick={() => setActivePopupData(null)} className="bg-gray-900 text-white py-5 font-black text-[11px] uppercase tracking-[0.4em] active:bg-gray-800 transition-colors w-full">Dismiss</button>
               </div>
             </div>
-            <button onClick={() => setActivePopupData(null)} className="bg-gray-900 text-white py-5 font-black text-[11px] uppercase tracking-[0.4em] active:bg-gray-800 transition-colors w-full">Dismiss</button>
-          </div>
-        </div>
-      );
+          );
+      } else {
+          // Existing spending popup logic
+          const displayDate = data.rawDate 
+            ? (period === 'W' ? format(data.rawDate, 'MMMM do, yyyy') : format(data.rawDate, 'MMMM yyyy')) 
+            : data.name;
+            
+          const validItems = payload.filter((item: any) => item.value !== undefined && item.value > 0);
+          const sortedAll = [...validItems].sort((a: any, b: any) => b.value - a.value);
+          const top5 = sortedAll.slice(0, 5);
+          const othersVal = sortedAll.slice(5).reduce((s, i) => s + i.value, 0);
+          const total = sortedAll.reduce((s, i) => s + i.value, 0);
+          
+          return (
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-6 pointer-events-none transition-all animate-fade-in">
+              <div className="rounded-[2.5rem] bg-white border border-gray-100 flex flex-col overflow-hidden shadow-[0_50px_100px_-20px_rgba(0,0,0,0.4)] min-w-[320px] max-w-[95%] pointer-events-auto scale-100">
+                <div className="px-8 pt-8 pb-5 border-b border-gray-50 bg-gray-50/50">
+                  <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.3em] mb-1.5">Period Analysis</p>
+                  <p className="text-[20px] font-black text-gray-900 tracking-tight leading-none">{displayDate}</p>
+                </div>
+                <div className="flex flex-col p-8 space-y-4">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Spending Categories</span>
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Amount</span>
+                  </div>
+                  {top5.map((item: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between gap-8">
+                      <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-3 h-3 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: item.color }} />
+                          <span className="text-[14px] font-bold truncate text-gray-700 tracking-tight">{getDisplayCategoryName(item.name)}</span>
+                      </div>
+                      <span className="text-[14px] font-mono font-black text-gray-900 whitespace-nowrap">${f1(item.value)}</span>
+                    </div>
+                  ))}
+                  {othersVal > 0 && (
+                    <div className="flex items-center justify-between gap-8 pt-1 border-t border-gray-50">
+                      <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-3 h-3 rounded-full shrink-0 shadow-sm bg-gray-200" />
+                          <span className="text-[14px] font-bold truncate text-gray-400 italic">Others</span>
+                      </div>
+                      <span className="text-[14px] font-mono font-bold text-gray-400 whitespace-nowrap">${f1(othersVal)}</span>
+                    </div>
+                  )}
+                  {validItems.length === 0 && (
+                    <div className="py-10 text-center text-gray-300 font-bold uppercase text-[10px] tracking-widest">No Data Recorded</div>
+                  )}
+                  <div className="pt-6 border-t-2 border-gray-100 mt-2 flex justify-between items-center">
+                      <span className="text-[12px] font-black text-gray-400 uppercase tracking-widest">Total Expenses</span>
+                      <span className="text-[22px] font-mono font-black text-blue-600 leading-none">${f1(total)}</span>
+                  </div>
+                </div>
+                <button onClick={() => setActivePopupData(null)} className="bg-gray-900 text-white py-5 font-black text-[11px] uppercase tracking-[0.4em] active:bg-gray-800 transition-colors w-full">Dismiss</button>
+              </div>
+            </div>
+          );
+      }
     }
     return null;
   };
@@ -575,11 +649,11 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             </div>
 
             <div className="chart-container-relative-box overflow-hidden">
-                <div ref={scrollRef} onScroll={handleAssetScroll} onMouseDown={(e) => onMouseDown(e, scrollRef)} onMouseLeave={onMouseLeave} onMouseUp={onMouseUp} onMouseMove={(e) => onMouseMove(e, scrollRef)} className="scrollable-chart-layer no-scrollbar" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}>
+                <div ref={scrollRef} onScroll={handleAssetScroll} onMouseDown={(e) => onMouseDown(e, scrollRef, 'asset')} onMouseLeave={onMouseLeave} onMouseUp={onMouseUp} onMouseMove={(e) => onMouseMove(e, scrollRef)} className="scrollable-chart-layer no-scrollbar" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}>
                     <div style={{ width: `${Math.max(100, (allMonthlyBalances.length / 12) * 100)}%`, minWidth: '100%', height: '100%' }} className="relative block pointer-events-none">
                         <div className="pointer-events-auto w-full h-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={allMonthlyBalances} margin={{ top: 10, right: 60, left: 0, bottom: 5 }}>
+                                <AreaChart data={allMonthlyBalances} margin={{ top: 10, right: 60, left: 0, bottom: 5 }} onMouseDown={(data: any) => { if (data && data.activePayload) setActivePopupData({ active: true, payload: data.activePayload, type: 'asset' }); }}>
                                     <defs>
                                         <linearGradient id="assetSplitFill" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset={gradientOffset} stopColor="#10b981" stopOpacity={0.2} />
@@ -594,7 +668,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                                     <XAxis dataKey="name" tick={{fontSize: 8, fontWeight: 700, fill: '#cbd5e1'}} tickFormatter={(v) => v.charAt(0)} stroke="none" dy={5} interval={0} padding={{ left: 10, right: 10 }} />
                                     <YAxis hide domain={assetChartDomain} />
                                     <ReferenceLine y={0} stroke="#cbd5e1" strokeDasharray="3 3" />
-                                    <Area type="monotone" dataKey={assetView} stroke="url(#assetSplitStroke)" strokeWidth={3} fillOpacity={1} fill="url(#assetSplitFill)" isAnimationActive={false} dot={{ r: 3, fill: '#94a3b8', strokeWidth: 0, stroke: '#fff' }} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }} />
+                                    <Area type="monotone" dataKey={assetView} stroke="url(#assetSplitStroke)" strokeWidth={3} fillOpacity={1} fill="url(#assetSplitFill)" isAnimationActive={false} dot={{ r: 4, fill: '#fff', strokeWidth: 2.5, stroke: '#94a3b8' }} activeDot={{ r: 7, strokeWidth: 3, stroke: '#fff', fill: '#007AFF' }} />
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
@@ -636,11 +710,11 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                   </div>
                   
                   <div className="chart-container-relative-box overflow-visible">
-                    <div ref={spendingScrollRef} onScroll={handleSpendingScroll} onMouseDown={(e) => onMouseDown(e, spendingScrollRef)} onMouseLeave={onMouseLeave} onMouseUp={onMouseUp} onMouseMove={(e) => onMouseMove(e, spendingScrollRef)} className="scrollable-chart-layer no-scrollbar" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x', overflowX: 'auto', overflowY: 'visible' }}>
+                    <div ref={spendingScrollRef} onScroll={handleSpendingScroll} onMouseDown={(e) => onMouseDown(e, spendingScrollRef, 'spending')} onMouseLeave={onMouseLeave} onMouseUp={onMouseUp} onMouseMove={(e) => onMouseMove(e, spendingScrollRef)} className="scrollable-chart-layer no-scrollbar" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x', overflowX: 'auto', overflowY: 'visible' }}>
                         <div style={{ width: `${Math.max(100, (spendingChartData.length / (period === 'W' ? 7 : 12)) * 100)}%`, minWidth: '100%', height: '100%' }} className="relative block pointer-events-none">
                             <div className="pointer-events-auto w-full h-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={spendingChartData} margin={{ top: 0, right: 60, left: 5, bottom: 0 }} barGap={6} onMouseDown={(data: any) => { if (data && data.activePayload) setActivePopupData({ active: true, payload: data.activePayload }); }}>
+                                    <BarChart data={spendingChartData} margin={{ top: 0, right: 60, left: 5, bottom: 0 }} barGap={6} onMouseDown={(data: any) => { if (data && data.activePayload) setActivePopupData({ active: true, payload: data.activePayload, type: 'spending' }); }}>
                                         <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f1f5f9" />
                                         <XAxis dataKey="name" tick={{fontSize: 9, fontWeight: 700, fill: '#94a3b8'}} stroke="none" dy={10} interval={0} />
                                         <YAxis hide domain={[0, visibleMax]} />
@@ -678,7 +752,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             </div>
         </div>
 
-        {activePopupData && <CenteredAnalysisPopup active={activePopupData.active} payload={activePopupData.payload} />}
+        {activePopupData && <CenteredAnalysisPopup active={activePopupData.active} payload={activePopupData.payload} type={activePopupData.type} />}
 
        <div className="bg-white p-6 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 overflow-visible select-none">
           <div className="flex justify-between items-start mb-8 relative z-30 bg-white">
