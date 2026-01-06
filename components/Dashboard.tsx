@@ -253,7 +253,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                                <span className="w-2 h-2 rounded-full mr-1.5 shrink-0" style={{ backgroundColor: chartColors[index % chartColors.length] }}></span>
                                <span className="text-gray-500 truncate">{getDisplayCategoryName(entry.name)}</span>
                             </div>
-                            <span className="font-mono font-bold text-gray-700 ml-1">${f1(entry.value)}</span>
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] text-gray-400 font-bold">{((entry.value / totalTracked) * 100).toFixed(0)}%</span>
+                                <span className="font-mono font-bold text-gray-700 ml-1">${f1(entry.value)}</span>
+                            </div>
                         </div>
                     ))}
                 </div>
