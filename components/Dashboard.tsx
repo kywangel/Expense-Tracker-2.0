@@ -154,12 +154,15 @@ const Dashboard: React.FC<DashboardProps> = ({
         chartItems.push({ name: 'Uncategorized', value: strayValue });
     }
     
+    // Sort items by value
     chartItems.sort((a, b) => b.value - a.value);
+    
+    // Grouping logic: Top 5 categories shown individually, others grouped as "Remaining"
     const top5 = chartItems.slice(0, 5);
     const othersPieValue = chartItems.slice(5).reduce((sum, item) => sum + item.value, 0);
     
     const finalChartData = [...top5];
-    if (othersPieValue > 0) finalChartData.push({ name: 'Misc', value: othersPieValue });
+    if (othersPieValue > 0) finalChartData.push({ name: 'Remaining', value: othersPieValue });
     
     const chartColors = title === 'Income' ? INCOME_CHART_COLORS : (title === 'Expenses' ? EXPENSE_CHART_COLORS : INVESTMENT_CHART_COLORS);
     const totalTracked = filteredTransactions.filter(t => t.type === type).reduce((sum, t) => sum + Math.abs(t.amount), 0);
@@ -251,7 +254,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div key={entry.name} className="flex items-center justify-between text-[11px] sm:text-xs">
                             <div className="flex items-center min-w-0 flex-1">
                                <span className="w-2 h-2 rounded-full mr-2 shrink-0" style={{ backgroundColor: chartColors[index % chartColors.length] }}></span>
-                               <span className="text-gray-600 font-medium truncate">{getDisplayCategoryName(entry.name)}</span>
+                               <span className={`text-gray-600 font-medium truncate ${entry.name === 'Remaining' ? 'italic text-gray-400' : ''}`}>
+                                 {entry.name === 'Remaining' ? 'Remaining Categories' : getDisplayCategoryName(entry.name)}
+                               </span>
                                <span className="text-[10px] text-gray-400 font-bold ml-2">{((entry.value / totalTracked) * 100).toFixed(0)}%</span>
                             </div>
                             <div className="flex items-center shrink-0">
