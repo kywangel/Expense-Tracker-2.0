@@ -246,16 +246,16 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="w-full grid grid-cols-2 gap-x-4 gap-y-2 mt-2">
+                <div className="w-full flex flex-col gap-y-2 mt-4 px-2">
                     {finalChartData.map((entry, index) => (
-                        <div key={entry.name} className="flex items-center justify-between text-[10px] sm:text-xs">
-                            <div className="flex items-center min-w-0">
-                               <span className="w-2 h-2 rounded-full mr-1.5 shrink-0" style={{ backgroundColor: chartColors[index % chartColors.length] }}></span>
-                               <span className="text-gray-500 truncate">{getDisplayCategoryName(entry.name)}</span>
+                        <div key={entry.name} className="flex items-center justify-between text-[11px] sm:text-xs">
+                            <div className="flex items-center min-w-0 flex-1">
+                               <span className="w-2 h-2 rounded-full mr-2 shrink-0" style={{ backgroundColor: chartColors[index % chartColors.length] }}></span>
+                               <span className="text-gray-600 font-medium truncate">{getDisplayCategoryName(entry.name)}</span>
+                               <span className="text-[10px] text-gray-400 font-bold ml-2">{((entry.value / totalTracked) * 100).toFixed(0)}%</span>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                                <span className="text-[9px] text-gray-400 font-bold">{((entry.value / totalTracked) * 100).toFixed(0)}%</span>
-                                <span className="font-mono font-bold text-gray-700 ml-1">${f1(entry.value)}</span>
+                            <div className="flex items-center shrink-0">
+                                <span className="font-mono font-bold text-gray-800">${f1(entry.value)}</span>
                             </div>
                         </div>
                     ))}
