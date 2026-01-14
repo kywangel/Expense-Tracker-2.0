@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import Navigation from './components/Navigation';
 import Dashboard from './components/Dashboard';
@@ -16,6 +15,7 @@ import { DEFAULT_SHEET_ID, DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.DASHBOARD);
+  const [isBalanceVisible, setIsBalanceVisible] = useState(true);
   
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
@@ -99,7 +99,7 @@ const App: React.FC = () => {
   }, []);
 
   const sortedTransactions = useMemo(() => {
-    return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(b.date).getTime());
   }, [transactions]);
 
   const safeSave = (key: string, data: any) => {
@@ -273,9 +273,9 @@ const App: React.FC = () => {
       </div>
 
       <main className={`flex-1 px-6 pt-2 pb-6 max-w-2xl mx-auto w-full relative z-10 ${isWidgetView ? 'bg-black' : ''}`}>
-        {view === AppView.DASHBOARD && <Dashboard transactions={sortedTransactions} baseCategoryBudgets={dashboardBudgets} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} categoryIcons={settings.categoryIcons} cumulativeStartMonth={settings.cumulativeStartMonth} />}
+        {view === AppView.DASHBOARD && <Dashboard transactions={sortedTransactions} baseCategoryBudgets={dashboardBudgets} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} categoryIcons={settings.categoryIcons} cumulativeStartMonth={settings.cumulativeStartMonth} isBalanceVisible={isBalanceVisible} setIsBalanceVisible={setIsBalanceVisible} />}
         {view === AppView.ADD_TRANSACTION && <AddTransaction onAdd={handleAddTransaction} sheetDbUrl={settings.sheetDbUrl} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} />}
-        {view === AppView.STATISTICS && <Statistics transactions={sortedTransactions} incomeCategories={settings.incomeCategories} investmentCategories={settings.investmentCategories} expenseCategories={settings.expenseCategories} settings={settings} />}
+        {view === AppView.STATISTICS && <Statistics transactions={sortedTransactions} incomeCategories={settings.incomeCategories} investmentCategories={settings.investmentCategories} expenseCategories={settings.expenseCategories} settings={settings} isBalanceVisible={isBalanceVisible} setIsBalanceVisible={setIsBalanceVisible} />}
         {view === AppView.DATABASE && <Database transactions={sortedTransactions} onUpdate={handleUpdateTransaction} onDelete={handleDeleteTransaction} settings={settings} onRefresh={() => handleSyncData(settings.sheetDbUrl, "Form Input")} />}
         {view === AppView.BUDGET && <Budgeting onUpdateBudget={handleUpdateBudget} settings={settings} transactions={sortedTransactions} onBack={() => setView(AppView.SETTINGS)} onShowNotification={showNotification}/>}
         {view === AppView.AI_TOOLS && <AiTools sheetDbUrl={settings.sheetDbUrl} onAddTransaction={handleAddTransaction} transactions={sortedTransactions} foundTransactions={aiFoundItems} setFoundTransactions={setAiFoundItems} matchedItems={aiMatchedItems} setMatchedItems={setAiMatchedItems} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} onShowNotification={showNotification} isSelectModeActive={isAiSelectModeActive} onToggleSelectMode={setIsAiSelectModeActive} />}
