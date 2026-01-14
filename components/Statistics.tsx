@@ -75,12 +75,13 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   
   const spendingScrollRef = useRef<HTMLDivElement>(null);
 
-  // Added missing mouse event handlers for horizontal scroll dragging
+  // Horizontal scroll dragging state
   const isDragging = useRef(false);
   const startX = useRef(0);
   const scrollLeftStart = useRef(0);
 
-  const onMouseDown = (e: React.MouseEvent, ref: React.RefObject<HTMLDivElement>, type?: string) => {
+  // Updated signatures to accept HTMLDivElement | null to fix TS2345
+  const onMouseDown = (e: React.MouseEvent, ref: React.RefObject<HTMLDivElement | null>, type?: string) => {
     if (!ref.current) return;
     isDragging.current = true;
     startX.current = e.pageX - ref.current.offsetLeft;
@@ -95,7 +96,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     isDragging.current = false;
   };
 
-  const onMouseMove = (e: React.MouseEvent, ref: React.RefObject<HTMLDivElement>) => {
+  const onMouseMove = (e: React.MouseEvent, ref: React.RefObject<HTMLDivElement | null>) => {
     if (!isDragging.current || !ref.current) return;
     e.preventDefault();
     const x = e.pageX - ref.current.offsetLeft;
