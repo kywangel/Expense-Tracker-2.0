@@ -17,35 +17,26 @@
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="mask-icon" href="/icon.svg" color="#2c2c2e" />
 
-    <!-- Tailwind CSS (CDN kept for simplicity in this setup) -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <style>
-      /* Prevent selection globally */
       * {
         -webkit-tap-highlight-color: transparent;
         -webkit-touch-callout: none;
         -webkit-user-select: none;
-        -khtml-user-select: none;
-        -moz-user-select: none;
-        -ms-user-select: none;
         user-select: none;
       }
 
-      /* Allow selection in inputs and textareas for functionality */
       input, textarea {
         -webkit-user-select: text;
-        -khtml-user-select: text;
-        -moz-user-select: text;
-        -ms-user-select: text;
         user-select: text;
       }
 
-      /* iOS-like scrollbar and touch behavior */
       body {
         overscroll-behavior-y: none;
       }
-      /* Hide scrollbar for clean UI */
+
       .no-scrollbar::-webkit-scrollbar {
         display: none;
       }
@@ -53,21 +44,15 @@
         -ms-overflow-style: none;
         scrollbar-width: none;
       }
+
       @keyframes fadeInDown {
-        from {
-          opacity: 0;
-          transform: translate3d(-50%, -30px, 0);
-        }
-        to {
-          opacity: 1;
-          transform: translate3d(-50%, 0, 0);
-        }
+        from { opacity: 0; transform: translate3d(-50%, -30px, 0); }
+        to { opacity: 1; transform: translate3d(-50%, 0, 0); }
       }
       .animate-fade-in-down {
         animation: fadeInDown 0.4s ease-out forwards;
       }
 
-      /* Safe area padding utilities */
       .pt-safe-top {
         padding-top: env(safe-area-inset-top, 20px);
       }
@@ -75,40 +60,28 @@
         padding-bottom: env(safe-area-inset-bottom, 20px);
       }
     </style>
-    <script>
-      // Global prevention of copy and paste
-      window.addEventListener('copy', (e) => {
-        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-          e.preventDefault();
-        }
-      });
-      window.addEventListener('paste', (e) => {
-        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-          e.preventDefault();
-        }
-      });
-    </script>
-  <script type="importmap">
+    <script type="importmap">
 {
   "imports": {
-    "date-fns": "https://esm.sh/date-fns@^4.1.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.33.0",
-    "vite": "https://esm.sh/vite@^7.2.7",
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "recharts": "https://esm.sh/recharts@3.5.1?external=react,react-dom",
+    "date-fns": "https://esm.sh/date-fns@4.1.0",
+    "@google/genai": "https://esm.sh/@google/genai@1.33.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
-    "recharts": "https://esm.sh/recharts@^3.5.1",
     "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "fs": "https://esm.sh/fs@^0.0.1-security",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "url": "https://esm.sh/url@^0.11.4",
     "path": "https://esm.sh/path@^0.12.7",
-    "url": "https://esm.sh/url@^0.11.4"
+    "fs": "https://esm.sh/fs@^0.0.1-security"
   }
 }
 </script>
-</head>
+  </head>
   <body class="bg-gray-50 text-gray-900 font-sans antialiased">
     <div id="root"></div>
-    <!-- Vite Entry Point -->
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
