@@ -9,7 +9,8 @@ import {
     eachDayOfInterval, eachMonthOfInterval, 
     isToday, isSameMonth, addWeeks, isSameDay,
     startOfDay, addDays, getYear, subMonths, startOfMonth, endOfMonth,
-    subWeeks, startOfWeek as dateFnsStartOfWeek, endOfYear, addMonths
+    subWeeks, startOfWeek as dateFnsStartOfWeek, endOfYear, addMonths,
+    getDaysInMonth
 } from 'date-fns';
 
 const startOfYearFunc = (date: Date) => {
@@ -270,6 +271,9 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     const totalExpenseBudget = expenseCategories.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
     const trackedBudgetSum = trackedCats.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
     
+    // Days in current month for average left calculation
+    const daysInMonthCount = getDaysInMonth(viewDate);
+
     const rows = trackedCats.map(cat => {
         const budget = effectiveBudgets[cat] || 0;
         const freq = freqTargets[cat] || 0;
@@ -280,10 +284,28 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         return { cat, budget, freq, unit, daySpent, leftMonth: budget - monthSpent, times: monthCount };
     });
     
-    const untrackedBudget = totalExpenseBudget - trackedBudgetSum;
+    const othersBudget = totalExpenseBudget - trackedBudgetSum;
     const othersDaySpent = selectedDayTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const othersMonthSpent = monthTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const othersMonthCount = monthTxs.filter(t => !trackedCats.includes(t.category) && Math.abs(t.amount) > 0).length;
+    const othersLeftMonth = othersBudget - othersMonthSpent;
+
+    const grandTotal = useMemo(() => {
+        const initial = { budget: 0, daySpent: 0, leftMonth: 0, times: 0 };
+        const summedRows = rows.reduce((acc, r) => ({
+            budget: acc.budget + r.budget,
+            daySpent: acc.daySpent + r.daySpent,
+            leftMonth: acc.leftMonth + r.leftMonth,
+            times: acc.times + r.times
+        }), initial);
+        
+        return {
+            budget: summedRows.budget + othersBudget,
+            daySpent: summedRows.daySpent + othersDaySpent,
+            leftMonth: summedRows.leftMonth + othersLeftMonth,
+            times: summedRows.times + othersMonthCount
+        };
+    }, [rows, othersBudget, othersDaySpent, othersLeftMonth, othersMonthCount]);
     
     const renderBreakdown = (catName: string, items: Transaction[]) => {
         const sorted = [...items].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -320,7 +342,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                         <th className="px-2 py-3 text-center">Freq</th>
                         <th className="px-2 py-3 text-right">Unit</th>
                         <th className="px-2 py-3 text-right bg-blue-50 text-blue-600">{isToday(viewDate) ? 'Today' : format(viewDate, 'MMM d')}</th>
-                        <th className="px-2 py-3 text-right">Left</th>
+                        <th className="px-2 py-3 text-right">AVG LEFT</th>
                         <th className="px-2 py-3 text-center">#</th>
                     </tr>
                 </thead>
@@ -333,7 +355,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                                 <td className="px-2 py-3 text-center text-gray-400">{r.freq || '--'}</td>
                                 <td className="px-2 py-3 text-right font-mono text-gray-500">{isBalanceVisible ? `$${f0(r.unit)}` : '****'}</td>
                                 <td className={`px-2 py-3 text-right font-mono font-black bg-blue-50/30 ${r.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>{isBalanceVisible ? `$${f0(r.daySpent)}` : '****'}</td>
-                                <td className={`px-2 py-3 text-right font-mono font-bold ${r.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>{isBalanceVisible ? `$${f0(r.leftMonth)}` : '****'}</td>
+                                <td className={`px-2 py-3 text-right font-mono font-bold ${r.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>{isBalanceVisible ? `$${f0(r.leftMonth / daysInMonthCount)}` : '****'}</td>
                                 <td className="px-2 py-3 text-center font-mono font-black text-gray-800">{r.times}</td>
                             </tr>
                             {expandedDailyCats[r.cat] && renderBreakdown(r.cat, monthTxs.filter(tx => tx.category === r.cat))}
@@ -341,47 +363,31 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                     ))}
                     <tr onClick={() => setExpandedDailyCats(p => ({ ...p, 'Others': !p['Others'] }))} className="bg-gray-50/50 italic cursor-pointer hover:bg-gray-100 transition-colors">
                         <td className="px-3 py-4 text-gray-600">Others</td>
-                        <td className="px-2 py-4 text-right font-mono text-gray-500">${isBalanceVisible ? f0(tableData.others.budget) : '****'}</td>
+                        <td className="px-2 py-4 text-right font-mono text-gray-500">{isBalanceVisible ? `$${f0(othersBudget)}` : '****'}</td>
                         <td className="px-2 py-4 text-center">--</td>
                         <td className="px-2 py-4 text-right font-mono">--</td>
-                        <td className={`px-2 py-4 text-right font-mono font-black bg-blue-50/30 ${tableData.others.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>${isBalanceVisible ? f0(tableData.others.daySpent) : '****'}</td>
-                        <td className={`px-2 py-4 text-right font-mono font-bold ${tableData.others.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>${isBalanceVisible ? f0(tableData.others.leftMonth) : '****'}</td>
-                        <td className="px-2 py-4 text-center font-mono font-black text-gray-800">{tableData.others.times}</td>
+                        <td className={`px-2 py-4 text-right font-mono font-black bg-blue-50/30 ${othersDaySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>{isBalanceVisible ? `$${f0(othersDaySpent)}` : '****'}</td>
+                        <td className={`px-2 py-4 text-right font-mono font-bold ${othersLeftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>{isBalanceVisible ? `$${f0(othersLeftMonth / daysInMonthCount)}` : '****'}</td>
+                        <td className="px-2 py-4 text-center font-mono font-black text-gray-800">{othersMonthCount}</td>
                     </tr>
                     {expandedDailyCats['Others'] && renderBreakdown('Others', monthTxs.filter(tx => !trackedCats.includes(tx.category)))}
+                    
+                    {/* Grand Total Row */}
+                    <tr className="bg-gray-100 font-black text-gray-900 border-t-2 border-gray-200">
+                        <td className="px-3 py-4 text-[10px] uppercase tracking-wider">GRAND TOTAL</td>
+                        <td className="px-2 py-4 text-right font-mono">{isBalanceVisible ? `$${f0(grandTotal.budget)}` : '****'}</td>
+                        <td className="px-2 py-4 text-center text-gray-400">--</td>
+                        <td className="px-2 py-4 text-right font-mono text-gray-400">--</td>
+                        <td className="px-2 py-4 text-right font-mono bg-blue-100 text-blue-700">{isBalanceVisible ? `$${f0(grandTotal.daySpent)}` : '****'}</td>
+                        <td className={`px-2 py-4 text-right font-mono ${grandTotal.leftMonth < 0 ? 'text-red-600' : 'text-green-700'}`}>{isBalanceVisible ? `$${f0(grandTotal.leftMonth / daysInMonthCount)}` : '****'}</td>
+                        <td className="px-2 py-4 text-center font-mono">{grandTotal.times}</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
       </div>
     );
   };
-
-  const tableData = useMemo(() => {
-    const viewDate = startOfDay(addDays(new Date(), dateOffset));
-    const yearStr = getYear(viewDate).toString();
-    const effectiveBudgets = settings.yearlyBudgets?.[yearStr] || settings.baseCategoryBudgets || {};
-    const trackedCats = settings.dailyViewCategories || [];
-    
-    const monthTxs = transactions.filter(tx => isSameMonth(new Date(tx.date), viewDate) && tx.type === 'expense');
-    const todayTxs = transactions.filter(tx => isSameDay(new Date(tx.date), viewDate) && tx.type === 'expense');
-    
-    const totalExpenseBudget = settings.expenseCategories.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
-    const trackedBudgetSum = trackedCats.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
-    const untrackedBudget = totalExpenseBudget - trackedBudgetSum;
-    
-    const othersDaySpent = todayTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    const othersMonthSpent = monthTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    const othersMonthCount = monthTxs.filter(t => !trackedCats.includes(t.category) && Math.abs(t.amount) > 0).length;
-
-    return {
-        others: {
-            budget: untrackedBudget,
-            daySpent: othersDaySpent,
-            leftMonth: untrackedBudget - othersMonthSpent,
-            times: othersMonthCount
-        }
-    };
-  }, [transactions, settings, dateOffset]);
 
   return (
     <div className="space-y-4 pb-40 px-1 -mt-4" onClick={() => setActivePopupData(null)}>
