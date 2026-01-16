@@ -76,7 +76,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   const startX = useRef(0);
   const scrollLeftStart = useRef(0);
 
-  const onMouseDown = (e: React.MouseEvent, ref: React.RefObject<any>, type?: string) => {
+  const onMouseDown = (e: React.MouseEvent, ref: React.RefObject<any>) => {
     if (!ref.current) return;
     isDragging.current = true;
     startX.current = e.pageX - ref.current.offsetLeft;
@@ -271,7 +271,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     const totalExpenseBudget = expenseCategories.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
     const trackedBudgetSum = trackedCats.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
     
-    // Days in current month for average left calculation
     const daysInMonthCount = getDaysInMonth(viewDate);
 
     const rows = trackedCats.map(cat => {
@@ -306,20 +305,61 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             times: summedRows.times + othersMonthCount
         };
     }, [rows, othersBudget, othersDaySpent, othersLeftMonth, othersMonthCount]);
+
+    const isAllExpanded = useMemo(() => {
+        const allTracked = trackedCats.length > 0 && trackedCats.every(c => expandedDailyCats[c]);
+        return allTracked && expandedDailyCats['Others'] && expandedDailyCats['GrandTotal'];
+    }, [trackedCats, expandedDailyCats]);
+
+    const handleToggleAll = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (isAllExpanded) {
+            setExpandedDailyCats({});
+        } else {
+            const next: Record<string, boolean> = { Others: true, GrandTotal: true };
+            trackedCats.forEach(c => next[c] = true);
+            setExpandedDailyCats(next);
+        }
+    };
     
     const renderBreakdown = (catName: string, items: Transaction[]) => {
         const sorted = [...items].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        if (sorted.length === 0) return <tr key={`${catName}-empty`} className="bg-blue-50/20 italic animate-fade-in text-gray-400 text-[10px]"><td colSpan={7} className="px-8 py-4 text-center">No transactions.</td></tr>;
+        if (sorted.length === 0) return <tr key={`${catName}-empty`} className="bg-blue-50/20 italic animate-fade-in text-gray-400 text-[10px]"><td colSpan={7} className="px-8 py-4 text-center">No transactions for this month.</td></tr>;
+        
+        const total = items.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+
         return <React.Fragment key={`${catName}-breakdown`}>
             {sorted.map(tx => (
-                <tr key={tx.id} className="bg-blue-50/30 text-[10px] animate-fade-in border-l-4 border-blue-500/30">
-                    <td colSpan={4} className="px-6 py-2.5"><span className="font-bold">{tx.category}</span> {tx.note && <span className="text-gray-400 italic"> - {tx.note}</span>}</td>
-                    <td className="px-2 py-2.5 text-right font-mono text-blue-600">{isBalanceVisible ? `$${f0(Math.abs(tx.amount))}` : '****'}</td>
+                <tr key={tx.id} className="bg-blue-50/10 text-[10px] animate-fade-in border-l-4 border-blue-400/40">
+                    <td colSpan={4} className="px-6 py-2.5">
+                        <div className="flex flex-col">
+                            <span className="font-bold text-gray-700">{tx.category}</span>
+                            {tx.note && <span className="text-gray-400 italic font-medium">{tx.note}</span>}
+                            <span className="text-[8px] text-gray-300 font-bold uppercase mt-0.5">{format(new Date(tx.date), 'MMM d')}</span>
+                        </div>
+                    </td>
+                    <td className="px-2 py-2.5 text-right font-mono font-bold text-blue-600">{isBalanceVisible ? `$${f0(Math.abs(tx.amount))}` : '****'}</td>
                     <td colSpan={2}></td>
                 </tr>
             ))}
+            {/* Monthly Total Row for the Breakdown */}
+            <tr className="bg-blue-100/40 text-[10px] font-black border-l-4 border-blue-600 border-b border-blue-200/50">
+                <td colSpan={4} className="px-6 py-3 text-blue-800 uppercase tracking-widest text-[8px]">
+                    Monthly {catName === 'GrandTotal' ? 'Grand' : catName} Total
+                </td>
+                <td className="px-2 py-3 text-right font-mono text-blue-700 text-xs">
+                    {isBalanceVisible ? `$${f0(total)}` : '****'}
+                </td>
+                <td colSpan={2} className="px-2 py-3 text-center text-blue-700 font-mono italic opacity-60">
+                    {items.length} items
+                </td>
+            </tr>
         </React.Fragment>;
     };
+
+    const renderChevron = (isExpanded: boolean) => (
+        <svg className={`w-3 h-3 transition-transform duration-300 ml-1.5 ${isExpanded ? 'rotate-180 text-blue-600' : 'text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+    );
 
     return (
       <div className="space-y-4 animate-fade-in">
@@ -337,7 +377,14 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             <table className="w-full text-[11px] sm:text-xs text-left border-collapse">
                 <thead>
                     <tr className="bg-gray-50 text-gray-400 font-bold uppercase tracking-wider border-b border-gray-100">
-                        <th className="px-3 py-3">Category</th>
+                        <th className="px-3 py-3 group cursor-pointer" onClick={handleToggleAll}>
+                            <div className="flex items-center gap-1">
+                                Category
+                                <div className={`p-1 rounded-md transition-colors ${isAllExpanded ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400 group-hover:bg-gray-200'}`}>
+                                    <svg className={`w-3 h-3 transition-transform duration-300 ${isAllExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                                </div>
+                            </div>
+                        </th>
                         <th className="px-2 py-3 text-right">Budget</th>
                         <th className="px-2 py-3 text-center">Freq</th>
                         <th className="px-2 py-3 text-right">Unit</th>
@@ -349,10 +396,13 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                 <tbody className="divide-y divide-gray-50">
                     {rows.map(r => (
                         <React.Fragment key={r.cat}>
-                            <tr onClick={() => setExpandedDailyCats(p => ({ ...p, [r.cat]: !p[r.cat] }))} className="cursor-pointer hover:bg-gray-50 transition-colors">
-                                <td className="px-3 py-3 font-semibold text-gray-700">{getDisplayCategoryName(r.cat)}</td>
+                            <tr onClick={() => setExpandedDailyCats(p => ({ ...p, [r.cat]: !p[r.cat] }))} className="cursor-pointer hover:bg-gray-50/80 transition-colors group">
+                                <td className="px-3 py-3 font-bold text-gray-700 flex items-center">
+                                    {getDisplayCategoryName(r.cat)}
+                                    {renderChevron(expandedDailyCats[r.cat])}
+                                </td>
                                 <td className="px-2 py-3 text-right font-mono text-gray-500">{isBalanceVisible ? `$${f0(r.budget)}` : '****'}</td>
-                                <td className="px-2 py-3 text-center text-gray-400">{r.freq || '--'}</td>
+                                <td className="px-2 py-3 text-center text-gray-400 font-mono">{r.freq || '--'}</td>
                                 <td className="px-2 py-3 text-right font-mono text-gray-500">{isBalanceVisible ? `$${f0(r.unit)}` : '****'}</td>
                                 <td className={`px-2 py-3 text-right font-mono font-black bg-blue-50/30 ${r.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>{isBalanceVisible ? `$${f0(r.daySpent)}` : '****'}</td>
                                 <td className={`px-2 py-3 text-right font-mono font-bold ${r.leftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>{isBalanceVisible ? `$${f0(r.leftMonth / daysInMonthCount)}` : '****'}</td>
@@ -361,27 +411,33 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                             {expandedDailyCats[r.cat] && renderBreakdown(r.cat, monthTxs.filter(tx => tx.category === r.cat))}
                         </React.Fragment>
                     ))}
-                    <tr onClick={() => setExpandedDailyCats(p => ({ ...p, 'Others': !p['Others'] }))} className="bg-gray-50/50 italic cursor-pointer hover:bg-gray-100 transition-colors">
-                        <td className="px-3 py-4 text-gray-600">Others</td>
+                    <tr onClick={() => setExpandedDailyCats(p => ({ ...p, Others: !p.Others }))} className="bg-gray-50/30 cursor-pointer hover:bg-gray-100/60 transition-colors">
+                        <td className="px-3 py-4 text-gray-600 italic font-medium flex items-center">
+                            Others
+                            {renderChevron(expandedDailyCats['Others'])}
+                        </td>
                         <td className="px-2 py-4 text-right font-mono text-gray-500">{isBalanceVisible ? `$${f0(othersBudget)}` : '****'}</td>
-                        <td className="px-2 py-4 text-center">--</td>
-                        <td className="px-2 py-4 text-right font-mono">--</td>
+                        <td className="px-2 py-4 text-center font-mono text-gray-400">--</td>
+                        <td className="px-2 py-4 text-right font-mono text-gray-400">--</td>
                         <td className={`px-2 py-4 text-right font-mono font-black bg-blue-50/30 ${othersDaySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>{isBalanceVisible ? `$${f0(othersDaySpent)}` : '****'}</td>
                         <td className={`px-2 py-4 text-right font-mono font-bold ${othersLeftMonth < 0 ? 'text-red-500' : 'text-green-600'}`}>{isBalanceVisible ? `$${f0(othersLeftMonth / daysInMonthCount)}` : '****'}</td>
                         <td className="px-2 py-4 text-center font-mono font-black text-gray-800">{othersMonthCount}</td>
                     </tr>
                     {expandedDailyCats['Others'] && renderBreakdown('Others', monthTxs.filter(tx => !trackedCats.includes(tx.category)))}
                     
-                    {/* Grand Total Row */}
-                    <tr className="bg-gray-100 font-black text-gray-900 border-t-2 border-gray-200">
-                        <td className="px-3 py-4 text-[10px] uppercase tracking-wider">GRAND TOTAL</td>
+                    <tr onClick={() => setExpandedDailyCats(p => ({ ...p, GrandTotal: !p.GrandTotal }))} className="bg-gray-100 font-black text-gray-900 border-t-2 border-gray-200 cursor-pointer hover:bg-gray-200/50 transition-colors">
+                        <td className="px-3 py-4 text-[10px] uppercase tracking-wider flex items-center">
+                            GRAND TOTAL
+                            {renderChevron(expandedDailyCats['GrandTotal'])}
+                        </td>
                         <td className="px-2 py-4 text-right font-mono">{isBalanceVisible ? `$${f0(grandTotal.budget)}` : '****'}</td>
-                        <td className="px-2 py-4 text-center text-gray-400">--</td>
-                        <td className="px-2 py-4 text-right font-mono text-gray-400">--</td>
+                        <td className="px-2 py-4 text-center text-gray-400 font-mono">--</td>
+                        <td className="px-2 py-4 text-right font-mono text-gray-400 font-mono">--</td>
                         <td className="px-2 py-4 text-right font-mono bg-blue-100 text-blue-700">{isBalanceVisible ? `$${f0(grandTotal.daySpent)}` : '****'}</td>
                         <td className={`px-2 py-4 text-right font-mono ${grandTotal.leftMonth < 0 ? 'text-red-600' : 'text-green-700'}`}>{isBalanceVisible ? `$${f0(grandTotal.leftMonth / daysInMonthCount)}` : '****'}</td>
                         <td className="px-2 py-4 text-center font-mono">{grandTotal.times}</td>
                     </tr>
+                    {expandedDailyCats['GrandTotal'] && renderBreakdown('GrandTotal', monthTxs)}
                 </tbody>
             </table>
         </div>
