@@ -99,7 +99,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   const [activePopupData, setActivePopupData] = useState<any>(null);
 
   const sortedTransactions = useMemo(() => 
-    [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(b.date).getTime()),
+    [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(a.date).getTime()),
     [transactions]
   );
 
@@ -287,11 +287,9 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         const remainingBudget = budget - monthSpent;
         const remainingFreq = freq - monthCount;
         
-        // As requested: (Budget - Spent) / (Target Frequency - Current Count)
-        // If remaining frequency is 0 or less, fallback to total remaining budget.
         const avgLeft = remainingFreq > 0 ? (remainingBudget / remainingFreq) : remainingBudget;
 
-        return { cat, budget, freq, unit, daySpent, avgLeft, times: monthCount };
+        return { cat, budget, freq, unit, daySpent, avgLeft, totalLeft: remainingBudget, times: monthCount };
     });
     
     const othersBudget = totalExpenseBudget - trackedBudgetSum;
@@ -299,7 +297,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     const othersMonthSpent = monthTxs.filter(t => !trackedCats.includes(t.category)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const othersMonthCount = monthTxs.filter(t => !trackedCats.includes(t.category) && Math.abs(t.amount) > 0).length;
     const othersRemainingBudget = othersBudget - othersMonthSpent;
-    // For "Others", no planned freq, so average per remaining day
     const othersAvgLeft = othersRemainingBudget / remainingDaysInMonth;
 
     const grandTotalData = useMemo(() => {
@@ -307,11 +304,10 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         const summedRows = rows.reduce((acc, r) => ({
             budget: acc.budget + r.budget,
             daySpent: acc.daySpent + r.daySpent,
-            spentMonth: acc.spentMonth + (r.budget - (r.avgLeft * (r.freq - r.times) || 0)), // approximation of spent
+            spentMonth: acc.spentMonth + (r.budget - (r.totalLeft || 0)),
             times: acc.times + r.times
         }), initial);
         
-        // Re-calculate exactly from filtered list for total row
         const totalBudget = summedRows.budget + othersBudget;
         const totalMonthSpent = monthTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
         const totalRemainingBudget = totalBudget - totalMonthSpent;
@@ -320,6 +316,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             budget: totalBudget,
             daySpent: rows.reduce((s, r) => s + r.daySpent, 0) + othersDaySpent,
             avgLeft: totalRemainingBudget / remainingDaysInMonth,
+            totalLeft: totalRemainingBudget,
             times: summedRows.times + othersMonthCount
         };
     }, [rows, othersBudget, othersDaySpent, monthTxs, remainingDaysInMonth, othersMonthCount]);
@@ -342,14 +339,14 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     
     const renderBreakdown = (catName: string, items: Transaction[]) => {
         const sorted = [...items].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        if (sorted.length === 0) return <tr key={`${catName}-empty`} className="bg-blue-50/20 italic animate-fade-in text-gray-400 text-[10px]"><td colSpan={7} className="px-8 py-4 text-center">No transactions for this month.</td></tr>;
+        if (sorted.length === 0) return <tr key={`${catName}-empty`} className="bg-blue-50/20 italic animate-fade-in text-gray-400 text-[10px]"><td colSpan={8} className="px-8 py-4 text-center">No transactions for this month.</td></tr>;
         
         const total = items.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
 
         return <React.Fragment key={`${catName}-breakdown`}>
             {sorted.map(tx => (
                 <tr key={tx.id} className="bg-blue-50/10 text-[10px] animate-fade-in border-l-4 border-blue-400/40">
-                    <td colSpan={4} className="px-6 py-2.5">
+                    <td colSpan={3} className="px-6 py-2.5">
                         <div className="flex flex-col">
                             <span className="font-bold text-gray-700">{tx.category}</span>
                             {tx.note && <span className="text-gray-400 italic font-medium">{tx.note}</span>}
@@ -357,17 +354,17 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                         </div>
                     </td>
                     <td className="px-2 py-2.5 text-right font-mono font-bold text-blue-600">{isBalanceVisible ? `$${f0(Math.abs(tx.amount))}` : '****'}</td>
-                    <td colSpan={2}></td>
+                    <td colSpan={4}></td>
                 </tr>
             ))}
             <tr className="bg-blue-100/40 text-[10px] font-black border-l-4 border-blue-600 border-b border-blue-200/50">
-                <td colSpan={4} className="px-6 py-3 text-blue-800 uppercase tracking-widest text-[8px]">
+                <td colSpan={3} className="px-6 py-3 text-blue-800 uppercase tracking-widest text-[8px]">
                     Monthly {catName === 'GrandTotal' ? 'Grand' : catName} Total
                 </td>
                 <td className="px-2 py-3 text-right font-mono text-blue-700 text-xs">
                     {isBalanceVisible ? `$${f0(total)}` : '****'}
                 </td>
-                <td colSpan={2} className="px-2 py-3 text-center text-blue-700 font-mono italic opacity-60">
+                <td colSpan={4} className="px-2 py-3 text-center text-blue-700 font-mono italic opacity-60">
                     {items.length} items
                 </td>
             </tr>
@@ -403,10 +400,11 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                             </div>
                         </th>
                         <th className="px-2 py-3 text-right">Budget</th>
-                        <th className="px-2 py-3 text-center">Freq</th>
-                        <th className="px-2 py-3 text-right">Unit</th>
                         <th className="px-2 py-3 text-right bg-blue-50 text-blue-600">{isToday(viewDate) ? 'Today' : format(viewDate, 'MMM d')}</th>
                         <th className="px-2 py-3 text-right">AVG LEFT</th>
+                        <th className="px-2 py-3 text-right">TOTAL LEFT</th>
+                        <th className="px-2 py-3 text-center">Freq</th>
+                        <th className="px-2 py-3 text-right">Unit</th>
                         <th className="px-2 py-3 text-center">#</th>
                     </tr>
                 </thead>
@@ -419,10 +417,11 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                                     {renderChevron(expandedDailyCats[r.cat])}
                                 </td>
                                 <td className="px-2 py-3 text-right font-mono text-gray-500">{isBalanceVisible ? `$${f0(r.budget)}` : '****'}</td>
-                                <td className="px-2 py-3 text-center text-gray-400 font-mono">{r.freq || '--'}</td>
-                                <td className="px-2 py-3 text-right font-mono text-gray-500">{isBalanceVisible ? `$${f0(r.unit)}` : '****'}</td>
                                 <td className={`px-2 py-3 text-right font-mono font-black bg-blue-50/30 ${r.daySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>{isBalanceVisible ? `$${f0(r.daySpent)}` : '****'}</td>
                                 <td className={`px-2 py-3 text-right font-mono font-bold ${r.avgLeft < 0 ? 'text-red-500' : 'text-green-600'}`}>{isBalanceVisible ? `$${f0(r.avgLeft)}` : '****'}</td>
+                                <td className={`px-2 py-3 text-right font-mono font-bold ${r.totalLeft < 0 ? 'text-red-500' : 'text-green-600'}`}>{isBalanceVisible ? `$${f0(r.totalLeft)}` : '****'}</td>
+                                <td className="px-2 py-3 text-center text-gray-400 font-mono">{r.freq || '--'}</td>
+                                <td className="px-2 py-3 text-right font-mono text-gray-500">{isBalanceVisible ? `$${f0(r.unit)}` : '****'}</td>
                                 <td className="px-2 py-3 text-center font-mono font-black text-gray-800">{r.times}</td>
                             </tr>
                             {expandedDailyCats[r.cat] && renderBreakdown(r.cat, monthTxs.filter(tx => tx.category === r.cat))}
@@ -434,10 +433,11 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                             {renderChevron(expandedDailyCats['Others'])}
                         </td>
                         <td className="px-2 py-4 text-right font-mono text-gray-500">{isBalanceVisible ? `$${f0(othersBudget)}` : '****'}</td>
-                        <td className="px-2 py-4 text-center font-mono text-gray-400">--</td>
-                        <td className="px-2 py-4 text-right font-mono text-gray-400">--</td>
                         <td className={`px-2 py-4 text-right font-mono font-black bg-blue-50/30 ${othersDaySpent > 0 ? 'text-blue-600' : 'text-gray-300'}`}>{isBalanceVisible ? `$${f0(othersDaySpent)}` : '****'}</td>
                         <td className={`px-2 py-4 text-right font-mono font-bold ${othersAvgLeft < 0 ? 'text-red-500' : 'text-green-600'}`}>{isBalanceVisible ? `$${f0(othersAvgLeft)}` : '****'}</td>
+                        <td className={`px-2 py-4 text-right font-mono font-bold ${othersRemainingBudget < 0 ? 'text-red-500' : 'text-green-600'}`}>{isBalanceVisible ? `$${f0(othersRemainingBudget)}` : '****'}</td>
+                        <td className="px-2 py-4 text-center font-mono text-gray-400">--</td>
+                        <td className="px-2 py-4 text-right font-mono text-gray-400">--</td>
                         <td className="px-2 py-4 text-center font-mono font-black text-gray-800">{othersMonthCount}</td>
                     </tr>
                     {expandedDailyCats['Others'] && renderBreakdown('Others', monthTxs.filter(tx => !trackedCats.includes(tx.category)))}
@@ -448,10 +448,11 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                             {renderChevron(expandedDailyCats['GrandTotal'])}
                         </td>
                         <td className="px-2 py-4 text-right font-mono">{isBalanceVisible ? `$${f0(grandTotalData.budget)}` : '****'}</td>
-                        <td className="px-2 py-4 text-center text-gray-400 font-mono">--</td>
-                        <td className="px-2 py-4 text-right font-mono text-gray-400 font-mono">--</td>
                         <td className="px-2 py-4 text-right font-mono bg-blue-100 text-blue-700">{isBalanceVisible ? `$${f0(grandTotalData.daySpent)}` : '****'}</td>
                         <td className={`px-2 py-4 text-right font-mono ${grandTotalData.avgLeft < 0 ? 'text-red-600' : 'text-green-700'}`}>{isBalanceVisible ? `$${f0(grandTotalData.avgLeft)}` : '****'}</td>
+                        <td className={`px-2 py-4 text-right font-mono ${grandTotalData.totalLeft < 0 ? 'text-red-600' : 'text-green-700'}`}>{isBalanceVisible ? `$${f0(grandTotalData.totalLeft)}` : '****'}</td>
+                        <td className="px-2 py-4 text-center text-gray-400 font-mono">--</td>
+                        <td className="px-2 py-4 text-right font-mono text-gray-400 font-mono">--</td>
                         <td className="px-2 py-4 text-center font-mono">{grandTotalData.times}</td>
                     </tr>
                     {expandedDailyCats['GrandTotal'] && renderBreakdown('GrandTotal', monthTxs)}
@@ -490,7 +491,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                 <div className="flex items-center bg-gray-100/80 p-0.5 rounded-full mt-6 shadow-inner">
                     <button onClick={() => setAssetEndIndex(p => Math.max(ASSET_WINDOW_SIZE, p - 1))} disabled={assetEndIndex <= ASSET_WINDOW_SIZE} className="p-2.5 text-gray-400 disabled:opacity-20 active:scale-90 transition-transform"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="3" stroke="currentColor"/></svg></button>
                     <button onClick={() => setAssetEndIndex(allMonthlyBalances.length)} disabled={assetEndIndex >= allMonthlyBalances.length} className="px-5 py-1.5 text-[9px] font-black text-blue-600 bg-white rounded-full shadow-sm border border-black/5 active:scale-95 transition-all">TODAY</button>
-                    <button onClick={() => setAssetEndIndex(p => Math.min(allMonthlyBalances.length, p + 1))} disabled={assetEndIndex >= allMonthlyBalances.length} className="p-2.5 text-gray-400 disabled:opacity-20 active:scale-90 transition-transform"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7 7 7" strokeWidth="3" stroke="currentColor"/></svg></button>
+                    <button onClick={() => setAssetEndIndex(p => Math.min(allMonthlyBalances.length, p + 1))} disabled={assetEndIndex >= allMonthlyBalances.length} className="p-2.5 text-gray-400 disabled:opacity-20 active:scale-90 transition-transform"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="3" stroke="currentColor"/></svg></button>
                 </div>
             </div>
 
