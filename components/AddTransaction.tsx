@@ -24,8 +24,13 @@ const AddTransaction: React.FC<AddTransactionProps> = ({ onAdd, sheetDbUrl, inco
                : type === 'income' ? incomeCategories 
                : investmentCategories;
     
-    // Only reset if the current selection is no longer valid in the current list
-    setCategory(prev => list.includes(prev) ? prev : (list[0] || ''));
+    // Improved Sync: Check if the previously selected category still exists in the current type list
+    // This handles reorders or edits without aggressively jumping back to the first item
+    setCategory(prev => {
+        const normalizedPrev = (prev || "").toLowerCase().trim();
+        const existing = list.find(c => c.toLowerCase().trim() === normalizedPrev);
+        return existing || (list[0] || '');
+    });
   }, [type, incomeCategories, expenseCategories, investmentCategories]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -48,17 +53,14 @@ const AddTransaction: React.FC<AddTransactionProps> = ({ onAdd, sheetDbUrl, inco
     // Optimistically update the main app state so the UI is fast
     onAdd(newTx);
     
-    // Reset the form for the next entry
+    // Reset the amount only
     setAmount('');
-    // Selection stays on current category for rapid entry of similar items
 
-    // Save in the background (fire and forget)
     saveTransaction(sheetDbUrl, newTx)
       .catch(err => {
         console.error("Background sync failed for transaction:", err);
       });
       
-    // Give visual feedback and then re-enable the button
     setTimeout(() => setLoading(false), 500);
   };
 

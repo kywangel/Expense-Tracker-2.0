@@ -161,7 +161,9 @@ const App: React.FC = () => {
   };
 
   const handleDeleteCategory = (type: 'income' | 'expense' | 'investment', categoryToDelete: string) => {
+    // Update transactions to be "Others" if their category is deleted
     setTransactions(prev => prev.map(t => t.category === categoryToDelete ? { ...t, category: "Others", note: `[${categoryToDelete}] ${t.note || ''}`.trim() } : t));
+    
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
     
     setSettings(prev => {
@@ -205,6 +207,15 @@ const App: React.FC = () => {
     const trimmedNewName = newName.trim();
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
     
+    // Explicitly update all transaction records to the new name (case-sensitive) to maintain Dashboard grouping sync
+    setTransactions(prev => prev.map(t => {
+        // Case-insensitive match for broad coverage, but normalize to the new setting name
+        if (t.category?.toLowerCase().trim() === oldName.toLowerCase().trim()) {
+            return { ...t, category: trimmedNewName };
+        }
+        return t;
+    }));
+
     setSettings(prev => {
         const newIcons = { ...prev.categoryIcons };
         delete newIcons[oldName];
@@ -249,7 +260,7 @@ const App: React.FC = () => {
             dailyTransactionsPerMonth: updatedFreq
         };
     });
-    setTransactions(prev => prev.map(t => t.category === oldName ? { ...t, category: trimmedNewName } : t));
+    
     showNotification(`Updated "${trimmedNewName}"`);
   };
 

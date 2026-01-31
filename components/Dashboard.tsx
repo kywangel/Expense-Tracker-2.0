@@ -97,25 +97,30 @@ const Dashboard: React.FC<DashboardProps> = ({
           } else if (viewTimeFrame === 'daily') {
               return isSameDay(tDate, viewDate);
           } else {
-              // Cumulative view logic: strictly from settings start month up to today
               return tDate >= startOfDay(firstTxDate) && tDate < todayBoundary;
           }
       });
   }, [transactions, viewTimeFrame, viewDate, firstTxDate]);
 
+  // Aggregation Map that uses normalized keys to ensure settings sync
   const spendingMap = useMemo(() => {
+      const allSettingsCats = [...incomeCategories, ...expenseCategories, ...investmentCategories];
+      
       return filteredTransactions.reduce((acc, t) => {
-        acc[t.category] = (acc[t.category] || 0) + t.amount;
+        const rawCat = (t.category || "Others").trim();
+        // Try to find the canonical name from settings using case-insensitive match
+        const canonical = allSettingsCats.find(c => c.toLowerCase() === rawCat.toLowerCase()) || rawCat;
+        
+        acc[canonical] = (acc[canonical] || 0) + t.amount;
         return acc;
       }, {} as Record<string, number>);
-  }, [filteredTransactions]);
+  }, [filteredTransactions, incomeCategories, expenseCategories, investmentCategories]);
 
   const budgetMultiplier = useMemo(() => {
       if (viewTimeFrame === 'monthly') return 1;
       if (viewTimeFrame === 'daily') {
           return 1 / getDaysInMonth(viewDate);
       }
-      // For cumulative, always calculate relative to "Today" to match filteredTransactions range
       const today = new Date();
       const monthsDiff = differenceInCalendarMonths(today, firstTxDate);
       return Math.max(1, monthsDiff + 1);
@@ -148,9 +153,14 @@ const Dashboard: React.FC<DashboardProps> = ({
         .map(cat => ({ name: cat, value: Math.abs(spendingMap[cat] || 0) }))
         .filter(item => item.value > 0);
     
-    const strayTxs = filteredTransactions.filter(t => 
-        t.type === type && !categories.includes(t.category)
-    );
+    // Improved Stray Logic: Check if the transaction's category is in the CURRENT section list (case-insensitive)
+    const strayTxs = filteredTransactions.filter(t => {
+        if (t.type !== type) return false;
+        const normalizedCat = (t.category || "").toLowerCase().trim();
+        const isInSection = categories.some(c => c.toLowerCase().trim() === normalizedCat);
+        return !isInSection;
+    });
+
     const strayValue = strayTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const hasStray = strayValue > 0;
 
@@ -158,10 +168,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         chartItems.push({ name: 'Uncategorized', value: strayValue });
     }
     
-    // Sort items by value
     chartItems.sort((a, b) => b.value - a.value);
     
-    // Grouping logic: Top 5 categories shown individually, others grouped as "Remaining"
     const top5 = chartItems.slice(0, 5);
     const othersPieValue = chartItems.slice(5).reduce((sum, item) => sum + item.value, 0);
     
@@ -183,7 +191,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         const hoverBg = title === 'Income' ? 'hover:bg-green-50/80' : title === 'Expenses' ? 'hover:bg-red-50/80' : 'hover:bg-blue-50/80';
         const childBg = title === 'Income' ? 'bg-green-50/60' : title === 'Expenses' ? 'bg-red-50/60' : 'bg-blue-50/60';
         
-        const catTransactions = filteredTransactions.filter(t => t.category === cat && t.type === type);
+        // Normalize categories for drilldown match
+        const catTransactions = filteredTransactions.filter(t => t.category?.toLowerCase().trim() === cat.toLowerCase().trim() && t.type === type);
 
         if (tracked === 0 && budget === 0) return null;
 
@@ -317,7 +326,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <div key={tx.id} className="flex justify-between items-center py-3 pl-12 pr-4">
                                 <div className="flex flex-col min-w-0">
                                     <span className="text-[11px] font-bold text-gray-800 truncate">
-                                        {getDisplayCategoryName(tx.category || "Others")}
+                                        {tx.category || "Others"}
                                     </span>
                                     <div className="flex flex-col mt-0.5">
                                         <span className="text-[9px] text-gray-500 font-semibold">{format(new Date(tx.date), 'MMMM d, yyyy')}</span>
