@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Transaction } from '../types';
 import { saveTransaction } from '../services/sheetService';
@@ -21,9 +20,12 @@ const AddTransaction: React.FC<AddTransactionProps> = ({ onAdd, sheetDbUrl, inco
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (type === 'expense') setCategory(expenseCategories[0] || '');
-    else if (type === 'income') setCategory(incomeCategories[0] || '');
-    else if (type === 'investment') setCategory(investmentCategories[0] || '');
+    const list = type === 'expense' ? expenseCategories 
+               : type === 'income' ? incomeCategories 
+               : investmentCategories;
+    
+    // Only reset if the current selection is no longer valid in the current list
+    setCategory(prev => list.includes(prev) ? prev : (list[0] || ''));
   }, [type, incomeCategories, expenseCategories, investmentCategories]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -48,15 +50,12 @@ const AddTransaction: React.FC<AddTransactionProps> = ({ onAdd, sheetDbUrl, inco
     
     // Reset the form for the next entry
     setAmount('');
-    if (type === 'expense') setCategory(expenseCategories[0] || '');
-    else if (type === 'income') setCategory(incomeCategories[0] || '');
-    else if (type === 'investment') setCategory(investmentCategories[0] || '');
+    // Selection stays on current category for rapid entry of similar items
 
     // Save in the background (fire and forget)
     saveTransaction(sheetDbUrl, newTx)
       .catch(err => {
         console.error("Background sync failed for transaction:", err);
-        // Optionally, show a failure notification to the user here
       });
       
     // Give visual feedback and then re-enable the button

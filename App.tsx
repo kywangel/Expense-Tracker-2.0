@@ -98,7 +98,6 @@ const App: React.FC = () => {
   }, []);
 
   const sortedTransactions = useMemo(() => {
-    // Globally ensure Latest First (Reverse Chronological)
     return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions]);
 
@@ -164,41 +163,94 @@ const App: React.FC = () => {
   const handleDeleteCategory = (type: 'income' | 'expense' | 'investment', categoryToDelete: string) => {
     setTransactions(prev => prev.map(t => t.category === categoryToDelete ? { ...t, category: "Others", note: `[${categoryToDelete}] ${t.note || ''}`.trim() } : t));
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
+    
     setSettings(prev => {
         const newIcons = { ...prev.categoryIcons };
         delete newIcons[categoryToDelete];
+        
+        const newBaseBudgets = { ...prev.baseCategoryBudgets };
+        delete newBaseBudgets[categoryToDelete];
+
+        const newDailyFreq = { ...prev.dailyTransactionsPerMonth };
+        delete newDailyFreq[categoryToDelete];
+
+        const newYearlyBudgets = { ...prev.yearlyBudgets };
+        Object.keys(newYearlyBudgets).forEach(y => {
+            const yearData = { ...newYearlyBudgets[y] };
+            delete yearData[categoryToDelete];
+            newYearlyBudgets[y] = yearData;
+        });
+
+        const newMonthlyBudgets = { ...prev.monthlyCategoryBudgets };
+        Object.keys(newMonthlyBudgets).forEach(m => {
+            const monthData = { ...newMonthlyBudgets[m] };
+            delete monthData[categoryToDelete];
+            newMonthlyBudgets[m] = monthData;
+        });
+
         return { 
             ...prev, 
             [key]: prev[key].filter(c => c !== categoryToDelete),
             categoryIcons: newIcons,
-            dailyViewCategories: prev.dailyViewCategories.filter(c => c !== categoryToDelete) 
+            baseCategoryBudgets: newBaseBudgets,
+            yearlyBudgets: newYearlyBudgets,
+            monthlyCategoryBudgets: newMonthlyBudgets,
+            dailyViewCategories: prev.dailyViewCategories.filter(c => c !== categoryToDelete),
+            dailyTransactionsPerMonth: newDailyFreq
         };
     });
   };
 
   const handleEditCategory = (type: 'income' | 'expense' | 'investment', oldName: string, newName: string, newIcon?: string) => {
+    const trimmedNewName = newName.trim();
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
+    
     setSettings(prev => {
         const newIcons = { ...prev.categoryIcons };
         delete newIcons[oldName];
-        newIcons[newName.trim()] = newIcon || '';
+        newIcons[trimmedNewName] = newIcon || '';
         
         const updatedFreq = { ...prev.dailyTransactionsPerMonth };
-        if (updatedFreq[oldName]) {
-            updatedFreq[newName.trim()] = updatedFreq[oldName];
+        if (updatedFreq[oldName] !== undefined) {
+            updatedFreq[trimmedNewName] = updatedFreq[oldName];
             delete updatedFreq[oldName];
         }
 
+        const newBaseBudgets = { ...prev.baseCategoryBudgets };
+        if (newBaseBudgets[oldName] !== undefined) {
+            newBaseBudgets[trimmedNewName] = newBaseBudgets[oldName];
+            delete newBaseBudgets[oldName];
+        }
+
+        const newYearlyBudgets = { ...prev.yearlyBudgets };
+        Object.keys(newYearlyBudgets).forEach(y => {
+            if (newYearlyBudgets[y][oldName] !== undefined) {
+                newYearlyBudgets[y] = { ...newYearlyBudgets[y], [trimmedNewName]: newYearlyBudgets[y][oldName] };
+                delete newYearlyBudgets[y][oldName];
+            }
+        });
+
+        const newMonthlyBudgets = { ...prev.monthlyCategoryBudgets };
+        Object.keys(newMonthlyBudgets).forEach(m => {
+            if (newMonthlyBudgets[m][oldName] !== undefined) {
+                newMonthlyBudgets[m] = { ...newMonthlyBudgets[m], [trimmedNewName]: newMonthlyBudgets[m][oldName] };
+                delete newMonthlyBudgets[m][oldName];
+            }
+        });
+
         return {
             ...prev,
-            [key]: prev[key].map(c => c === oldName ? newName.trim() : c),
+            [key]: prev[key].map(c => c === oldName ? trimmedNewName : c),
             categoryIcons: newIcons,
-            dailyViewCategories: prev.dailyViewCategories.map(c => c === oldName ? newName.trim() : c),
+            baseCategoryBudgets: newBaseBudgets,
+            yearlyBudgets: newYearlyBudgets,
+            monthlyCategoryBudgets: newMonthlyBudgets,
+            dailyViewCategories: prev.dailyViewCategories.map(c => c === oldName ? trimmedNewName : c),
             dailyTransactionsPerMonth: updatedFreq
         };
     });
-    setTransactions(prev => prev.map(t => t.category === oldName ? { ...t, category: newName.trim() } : t));
-    showNotification(`Updated "${newName.trim()}"`);
+    setTransactions(prev => prev.map(t => t.category === oldName ? { ...t, category: trimmedNewName } : t));
+    showNotification(`Updated "${trimmedNewName}"`);
   };
 
   const handleReorderCategories = (type: 'income' | 'expense' | 'investment', reorderedCategories: string[]) => {
