@@ -1,4 +1,6 @@
 
+import { startOfMonth, addMonths, subMonths, setDate, subDays, endOfMonth } from 'date-fns';
+
 export const DEFAULT_EXPENSE_CATEGORIES = [
   "Family Allowance", "Lunch", "Entertainment", "Dinner", "Balancing Figure", 
   "Subscription (HK Career)", "Transportation", "Clothing", "My Treat", 
@@ -16,7 +18,6 @@ export const DEFAULT_INVESTMENT_CATEGORIES = [
 
 /**
  * Determines transaction type based on category.
- * If 'Others' is passed, it typically falls to 'expense' unless context is provided.
  */
 export const getTransactionType = (
   category: string, 
@@ -40,4 +41,22 @@ export const toHKDateString = (dateInput?: Date | string | number) => {
     month: '2-digit', 
     day: '2-digit' 
   }).format(date);
+};
+
+/**
+ * Calculates the start and end of a financial month cycle.
+ * If startDay is 25, then Feb 24 belongs to Jan (starts Jan 25).
+ */
+export const getFinancialInterval = (date: Date, startDay: number = 1) => {
+  if (startDay <= 1) {
+    return { start: startOfMonth(date), end: endOfMonth(date) };
+  }
+  
+  let start = setDate(startOfMonth(date), startDay);
+  if (date.getDate() < startDay) {
+    start = subMonths(start, 1);
+  }
+  
+  const end = subDays(addMonths(start, 1), 1);
+  return { start, end };
 };

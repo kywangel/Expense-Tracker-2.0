@@ -51,6 +51,10 @@ const Settings: React.FC<SettingsProps> = ({
   const handleStartMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       onSave({ ...settings, cumulativeStartMonth: e.target.value });
   };
+
+  const handleBillingCycleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      onSave({ ...settings, billingCycleStartDay: parseInt(e.target.value) });
+  };
   
   const handleToggleDailyCategory = (cat: string) => {
     const current = settings.dailyViewCategories || [];
@@ -126,6 +130,25 @@ const Settings: React.FC<SettingsProps> = ({
          <p className="text-[11px] text-blue-800 leading-normal">
             <strong>Pro Tip:</strong> To prevent data loss, tap the "Share" icon and <strong>Add to Home Screen</strong>. This keeps your data separate from regular browser tabs.
          </p>
+      </div>
+
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+        <h3 className="font-bold text-gray-800">Billing Cycle</h3>
+        <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Month Start Day</label>
+            <select 
+              value={settings.billingCycleStartDay || 1} 
+              onChange={handleBillingCycleChange}
+              className="w-full p-3 bg-gray-50 rounded-xl text-sm font-bold text-gray-700 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            >
+              {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                <option key={day} value={day}>{day}{day === 1 ? 'st' : day === 2 ? 'nd' : day === 3 ? 'rd' : 'th'} of the month</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-gray-400 mt-2 italic leading-tight">
+              Charts and summaries will group transactions starting from this day.
+            </p>
+        </div>
       </div>
 
       {/* Widget Guide Section */}

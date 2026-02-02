@@ -1,5 +1,8 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, AppSettings } from '../types';
+import { getFinancialInterval } from '../constants';
+import { format } from 'date-fns';
 
 interface DatabaseProps {
   transactions: Transaction[];
@@ -52,20 +55,23 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
   }, [transactions, typeFilter, searchQuery, startDate, endDate, selectedCategories]);
 
   const groupedTransactions = useMemo(() => {
+    const billingStart = settings.billingCycleStartDay || 1;
     const groups = filteredTransactions.reduce((acc, tx) => {
-        const monthKey = tx.date.substring(0, 7);
+        const tDate = new Date(tx.date);
+        const { start } = getFinancialInterval(tDate, billingStart);
+        // Use the cycle start date as the unique key for grouping
+        const monthKey = format(start, 'yyyy-MM-dd');
         if (!acc[monthKey]) acc[monthKey] = [];
         acc[monthKey].push(tx);
         return acc;
     }, {} as Record<string, Transaction[]>);
 
     Object.keys(groups).forEach(key => {
-        // Strict sort: Latest First
         groups[key].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     });
 
     return groups;
-  }, [filteredTransactions]);
+  }, [filteredTransactions, settings.billingCycleStartDay]);
 
   const sortedMonths = useMemo(() => Object.keys(groupedTransactions).sort().reverse(), [groupedTransactions]);
 
@@ -125,6 +131,14 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
     document.body.removeChild(link);
   };
 
+  const getMonthLabel = (key: string) => {
+      const billingStart = settings.billingCycleStartDay || 1;
+      const date = new Date(key);
+      const { start, end } = getFinancialInterval(date, billingStart);
+      if (billingStart === 1) return format(start, 'MMMM yyyy');
+      return `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
+  };
+
   return (
     <div className="pb-32 space-y-3">
         {/* Type Filter Tabs */}
@@ -144,7 +158,7 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
         <div className="grid grid-cols-3 gap-3 px-1">
              <button onClick={handleRefresh} disabled={isRefreshing} className="bg-white p-3 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col items-center justify-center gap-2 active:bg-gray-50 active:scale-95 transition-all disabled:opacity-50 h-24">
                  <div className={`w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center ${isRefreshing ? 'animate-spin' : ''}`}>
-                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h5M20 20v-5h-5M4 4l5 5M20 20l-5-5"></path></svg>
+                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h5M20 20v-5h-5M4 4l5 5M20 20l-5-5"></path></svg>
                  </div>
                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Sync</span>
             </button>
@@ -168,11 +182,11 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
         {/* Transactions List Area */}
         <div className="space-y-4">
             {sortedMonths.length > 0 ? sortedMonths.map(monthKey => {
-                const monthName = new Date(`${monthKey}-02`).toLocaleString('default', { month: 'long', year: 'numeric' });
+                const monthName = getMonthLabel(monthKey);
                 return (
                     <div key={monthKey} className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
                         <button onClick={() => toggleMonthVisibility(monthKey)} className="w-full px-6 py-4 bg-gray-50/50 hover:bg-gray-50 flex justify-between items-center font-black text-gray-800 text-sm tracking-tight transition-colors">
-                            <span>{monthName}</span>
+                            <span className="flex-1 text-left">{monthName}</span>
                             <svg className={`w-5 h-5 transform transition-transform text-gray-400 ${visibleMonths[monthKey] ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
                         </button>
                         {visibleMonths[monthKey] && (
@@ -223,7 +237,7 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
             )}
         </div>
 
-        {/* COMPACT CENTERED FILTER MODAL */}
+        {/* ... (rest of Filter/Edit/Delete modals as previously defined) */}
         {isFilterModalOpen && (
             <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-6 backdrop-blur-md animate-fade-in" onClick={() => setIsFilterModalOpen(false)}>
                 <div className="bg-white w-full max-w-[340px] rounded-[2.5rem] shadow-2xl animate-fade-in-up overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -238,7 +252,6 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
                             </button>
                         </div>
 
-                        {/* Search Input Section */}
                         <div className="space-y-2">
                             <label className="text-[9px] font-black text-blue-600 uppercase tracking-widest ml-1">Search Keywords</label>
                             <input 
@@ -250,7 +263,6 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
                             />
                         </div>
 
-                        {/* Date Option Section */}
                         <div className="space-y-2">
                             <label className="text-[9px] font-black text-blue-600 uppercase tracking-widest ml-1">Date Range</label>
                             <div className="grid grid-cols-2 gap-2">
@@ -259,7 +271,6 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
                             </div>
                         </div>
 
-                        {/* Category Option Section */}
                         <div className="space-y-2">
                             <div className="flex justify-between items-center px-1">
                                 <label className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Categories</label>
@@ -283,7 +294,6 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
                             </div>
                         </div>
 
-                        {/* Action Buttons */}
                         <div className="flex gap-2 pt-2">
                             <button onClick={() => { resetFilters(); setIsFilterModalOpen(false); }} className="flex-1 py-4 rounded-2xl bg-gray-100 text-gray-500 font-black text-[10px] uppercase tracking-widest">Reset</button>
                             <button onClick={() => setIsFilterModalOpen(false)} className="flex-[1.5] py-4 rounded-2xl bg-gray-900 text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-gray-900/30">Apply</button>
@@ -293,7 +303,6 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
             </div>
         )}
 
-        {/* Edit Modal (Centered) */}
         {isEditModalOpen && editingTx && (
             <div className="fixed inset-0 z-[2500] flex items-center justify-center bg-black/60 p-6 backdrop-blur-md animate-fade-in" onClick={() => setIsEditModalOpen(false)}>
                 <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-fade-in-up" onClick={e => e.stopPropagation()}>
@@ -325,7 +334,7 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
                             <div className="space-y-1">
                                 <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Category</label>
                                 <select value={editingTx.category} onChange={e => setEditingTx({...editingTx, category: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-xs font-bold focus:bg-white outline-none">
-                                    {(editingTx.type === 'expense' ? settings.expenseCategories : editingTx.type === 'income' ? settings.incomeCategories : settings.investmentCategories).map(c => <option key={c} value={c}>{c}</option>)}
+                                    {(editingTx.type === 'expense' ? settings.expenseCategories : editingTx.type === 'income' ? settings.incomeCategories : editingTx.type === 'investment' ? settings.investmentCategories : []).map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
                             </div>
                         </div>
@@ -346,7 +355,6 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
             </div>
         )}
         
-        {/* Delete Modal (Centered) */}
         {itemToDelete && (
             <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/70 p-6 backdrop-blur-xl animate-fade-in" onClick={() => setItemToDelete(null)}>
               <div className="bg-white w-full max-w-[300px] rounded-[2.5rem] p-8 shadow-2xl animate-fade-in-up text-center" onClick={e => e.stopPropagation()}>

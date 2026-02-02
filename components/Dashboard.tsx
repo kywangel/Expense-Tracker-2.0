@@ -1,5 +1,6 @@
+
 import React, { useState, useMemo } from 'react';
-import { Transaction } from '../types';
+import { Transaction, AppSettings } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { 
   differenceInCalendarMonths, 
@@ -14,6 +15,7 @@ import {
   format, 
   isToday 
 } from 'date-fns';
+import { getFinancialInterval } from '../constants';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -25,6 +27,7 @@ interface DashboardProps {
   cumulativeStartMonth?: string;
   isBalanceVisible: boolean;
   setIsBalanceVisible: React.Dispatch<React.SetStateAction<boolean>>;
+  settings: AppSettings;
 }
 
 const INCOME_CHART_COLORS = ['#10B981', '#34D399', '#6EE7B7', '#A7F3D0', '#D1FAE5'];
@@ -45,7 +48,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   categoryIcons,
   cumulativeStartMonth,
   isBalanceVisible,
-  setIsBalanceVisible
+  setIsBalanceVisible,
+  settings
 }) => {
   const [viewTimeFrame, setViewTimeFrame] = useState<ViewMode>('monthly');
   const [viewDate, setViewDate] = useState<Date>(new Date());
@@ -89,26 +93,27 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [transactions, cumulativeStartMonth]);
 
   const filteredTransactions = useMemo(() => {
-      const todayBoundary = addDays(startOfDay(new Date()), 1); // Up to end of today
+      const todayBoundary = addDays(startOfDay(new Date()), 1); 
+      const billingStart = settings.billingCycleStartDay || 1;
+      
       return transactions.filter(t => {
           const tDate = new Date(t.date);
           if (viewTimeFrame === 'monthly') {
-              return isSameMonth(tDate, viewDate);
+              const { start, end } = getFinancialInterval(viewDate, billingStart);
+              return tDate >= start && tDate <= end;
           } else if (viewTimeFrame === 'daily') {
               return isSameDay(tDate, viewDate);
           } else {
               return tDate >= startOfDay(firstTxDate) && tDate < todayBoundary;
           }
       });
-  }, [transactions, viewTimeFrame, viewDate, firstTxDate]);
+  }, [transactions, viewTimeFrame, viewDate, firstTxDate, settings.billingCycleStartDay]);
 
-  // Aggregation Map that uses normalized keys to ensure settings sync
   const spendingMap = useMemo(() => {
       const allSettingsCats = [...incomeCategories, ...expenseCategories, ...investmentCategories];
       
       return filteredTransactions.reduce((acc, t) => {
         const rawCat = (t.category || "Others").trim();
-        // Try to find the canonical name from settings using case-insensitive match
         const canonical = allSettingsCats.find(c => c.toLowerCase() === rawCat.toLowerCase()) || rawCat;
         
         acc[canonical] = (acc[canonical] || 0) + t.amount;
@@ -153,7 +158,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         .map(cat => ({ name: cat, value: Math.abs(spendingMap[cat] || 0) }))
         .filter(item => item.value > 0);
     
-    // Improved Stray Logic: Check if the transaction's category is in the CURRENT section list (case-insensitive)
     const strayTxs = filteredTransactions.filter(t => {
         if (t.type !== type) return false;
         const normalizedCat = (t.category || "").toLowerCase().trim();
@@ -191,7 +195,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         const hoverBg = title === 'Income' ? 'hover:bg-green-50/80' : title === 'Expenses' ? 'hover:bg-red-50/80' : 'hover:bg-blue-50/80';
         const childBg = title === 'Income' ? 'bg-green-50/60' : title === 'Expenses' ? 'bg-red-50/60' : 'bg-blue-50/60';
         
-        // Normalize categories for drilldown match
         const catTransactions = filteredTransactions.filter(t => t.category?.toLowerCase().trim() === cat.toLowerCase().trim() && t.type === type);
 
         if (tracked === 0 && budget === 0) return null;
@@ -349,10 +352,15 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const periodLabel = useMemo(() => {
-    if (viewTimeFrame === 'monthly') return format(viewDate, 'MMMM yyyy');
+    const billingStart = settings.billingCycleStartDay || 1;
+    if (viewTimeFrame === 'monthly') {
+        const { start, end } = getFinancialInterval(viewDate, billingStart);
+        if (billingStart === 1) return format(start, 'MMMM yyyy');
+        return `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
+    }
     if (viewTimeFrame === 'daily') return format(viewDate, 'MMMM d, yyyy');
     return `Cumulative (since ${format(firstTxDate, 'MMM yyyy')})`;
-  }, [viewTimeFrame, viewDate, firstTxDate]);
+  }, [viewTimeFrame, viewDate, firstTxDate, settings.billingCycleStartDay]);
 
   return (
     <div className="space-y-4 pb-24">
@@ -377,7 +385,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
-          <div className="text-center"><p className="text-sm font-extrabold text-gray-800 tracking-tight">{periodLabel}</p></div>
+          <div className="text-center px-2 flex-1"><p className="text-sm font-extrabold text-gray-800 tracking-tight leading-tight">{periodLabel}</p></div>
           <button onClick={jumpToToday} disabled={viewTimeFrame === 'cumulative' || (viewTimeFrame === 'monthly' ? isSameMonth(new Date(), viewDate) : isSameDay(new Date(), viewDate))} className="text-[10px] font-bold text-blue-600 uppercase tracking-widest disabled:opacity-30 px-2 py-1 bg-blue-50 rounded-md">Today</button>
       </div>
 

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import Navigation from './components/Navigation';
 import Dashboard from './components/Dashboard';
@@ -32,7 +33,8 @@ const App: React.FC = () => {
           investmentCategories: DEFAULT_INVESTMENT_CATEGORIES,
           categoryIcons: {},
           dailyViewCategories: [],
-          dailyTransactionsPerMonth: {}
+          dailyTransactionsPerMonth: {},
+          billingCycleStartDay: 1
       };
 
       if (saved) {
@@ -43,7 +45,8 @@ const App: React.FC = () => {
             categoryIcons: parsed.categoryIcons || {},
             yearlyBudgets: parsed.yearlyBudgets || {},
             dailyViewCategories: parsed.dailyViewCategories || [],
-            dailyTransactionsPerMonth: parsed.dailyTransactionsPerMonth || {}
+            dailyTransactionsPerMonth: parsed.dailyTransactionsPerMonth || {},
+            billingCycleStartDay: parsed.billingCycleStartDay || 1
           };
       }
       return defaults;
@@ -60,7 +63,8 @@ const App: React.FC = () => {
           investmentCategories: DEFAULT_INVESTMENT_CATEGORIES,
           categoryIcons: {},
           dailyViewCategories: [],
-          dailyTransactionsPerMonth: {}
+          dailyTransactionsPerMonth: {},
+          billingCycleStartDay: 1
       };
     }
   });
@@ -161,9 +165,7 @@ const App: React.FC = () => {
   };
 
   const handleDeleteCategory = (type: 'income' | 'expense' | 'investment', categoryToDelete: string) => {
-    // Update transactions to be "Others" if their category is deleted
     setTransactions(prev => prev.map(t => t.category === categoryToDelete ? { ...t, category: "Others", note: `[${categoryToDelete}] ${t.note || ''}`.trim() } : t));
-    
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
     
     setSettings(prev => {
@@ -207,15 +209,6 @@ const App: React.FC = () => {
     const trimmedNewName = newName.trim();
     const key = `${type}Categories` as 'incomeCategories' | 'expenseCategories' | 'investmentCategories';
     
-    // Explicitly update all transaction records to the new name (case-sensitive) to maintain Dashboard grouping sync
-    setTransactions(prev => prev.map(t => {
-        // Case-insensitive match for broad coverage, but normalize to the new setting name
-        if (t.category?.toLowerCase().trim() === oldName.toLowerCase().trim()) {
-            return { ...t, category: trimmedNewName };
-        }
-        return t;
-    }));
-
     setSettings(prev => {
         const newIcons = { ...prev.categoryIcons };
         delete newIcons[oldName];
@@ -260,7 +253,7 @@ const App: React.FC = () => {
             dailyTransactionsPerMonth: updatedFreq
         };
     });
-    
+    setTransactions(prev => prev.map(t => t.category === oldName ? { ...t, category: trimmedNewName } : t));
     showNotification(`Updated "${trimmedNewName}"`);
   };
 
@@ -336,7 +329,7 @@ const App: React.FC = () => {
       </div>
 
       <main className={`flex-1 px-6 pt-2 pb-6 max-w-2xl mx-auto w-full relative z-10 ${isWidgetView ? 'bg-black' : ''}`}>
-        {view === AppView.DASHBOARD && <Dashboard transactions={sortedTransactions} baseCategoryBudgets={dashboardBudgets} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} categoryIcons={settings.categoryIcons} cumulativeStartMonth={settings.cumulativeStartMonth} isBalanceVisible={isBalanceVisible} setIsBalanceVisible={setIsBalanceVisible} />}
+        {view === AppView.DASHBOARD && <Dashboard transactions={sortedTransactions} baseCategoryBudgets={dashboardBudgets} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} categoryIcons={settings.categoryIcons} cumulativeStartMonth={settings.cumulativeStartMonth} isBalanceVisible={isBalanceVisible} setIsBalanceVisible={setIsBalanceVisible} settings={settings} />}
         {view === AppView.ADD_TRANSACTION && <AddTransaction onAdd={handleAddTransaction} sheetDbUrl={settings.sheetDbUrl} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} />}
         {view === AppView.STATISTICS && <Statistics transactions={sortedTransactions} incomeCategories={settings.incomeCategories} investmentCategories={settings.investmentCategories} expenseCategories={settings.expenseCategories} settings={settings} isBalanceVisible={isBalanceVisible} setIsBalanceVisible={setIsBalanceVisible} />}
         {view === AppView.DATABASE && <Database transactions={sortedTransactions} onUpdate={handleUpdateTransaction} onDelete={handleDeleteTransaction} settings={settings} onRefresh={() => handleSyncData(settings.sheetDbUrl, "Form Input")} />}

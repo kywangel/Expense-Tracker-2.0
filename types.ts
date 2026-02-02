@@ -39,6 +39,7 @@ export interface AppSettings {
   baseCategoryBudgets: Record<string, number>; 
   yearlyBudgets: Record<string, Record<string, number>>; 
   cumulativeStartMonth?: string; 
+  billingCycleStartDay?: number; // Day of month to start (1-31)
   // Dynamic category lists
   incomeCategories: string[];
   expenseCategories: string[];

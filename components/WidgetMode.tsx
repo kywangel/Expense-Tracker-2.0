@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { Transaction, AppSettings } from '../types';
 import { isSameDay, startOfMonth, isSameMonth, startOfDay, getYear, format } from 'date-fns';
+import { getFinancialInterval } from '../constants';
 
 interface WidgetModeProps {
   transactions: Transaction[];
@@ -15,12 +16,18 @@ const WidgetMode: React.FC<WidgetModeProps> = ({ transactions, settings, onExit 
   const viewDate = startOfDay(new Date());
   
   const tableData = useMemo(() => {
+    const billingStartDay = settings.billingCycleStartDay || 1;
+    const { start: monthStart, end: monthEnd } = getFinancialInterval(viewDate, billingStartDay);
+    
     const yearStr = getYear(viewDate).toString();
     const effectiveBudgets = settings.yearlyBudgets?.[yearStr] || settings.baseCategoryBudgets || {};
     const trackedCats = settings.dailyViewCategories || [];
     const freqTargets = settings.dailyTransactionsPerMonth || {};
     
-    const monthTxs = transactions.filter(tx => isSameMonth(new Date(tx.date), viewDate) && tx.type === 'expense');
+    const monthTxs = transactions.filter(tx => {
+        const tDate = new Date(tx.date);
+        return tDate >= monthStart && tDate <= monthEnd && tx.type === 'expense';
+    });
     const todayTxs = transactions.filter(tx => isSameDay(new Date(tx.date), viewDate) && tx.type === 'expense');
     
     const rows = trackedCats.map(cat => {
@@ -50,7 +57,8 @@ const WidgetMode: React.FC<WidgetModeProps> = ({ transactions, settings, onExit 
             daySpent: othersDaySpent,
             leftMonth: untrackedBudget - othersMonthSpent,
             times: othersMonthCount
-        }
+        },
+        cycleLabel: billingStartDay > 1 ? `${format(monthStart, 'MMM d')} - ${format(monthEnd, 'MMM d')}` : format(viewDate, 'MMMM yyyy')
     };
   }, [transactions, settings, viewDate]);
 
@@ -64,7 +72,7 @@ const WidgetMode: React.FC<WidgetModeProps> = ({ transactions, settings, onExit 
       <div className="flex justify-between items-center mb-2">
           <div>
               <h2 className="text-white font-black text-xl tracking-tight">Spending Analysis</h2>
-              <p className="text-blue-500 text-[10px] font-bold uppercase tracking-widest">{format(viewDate, 'EEEE, MMM do')}</p>
+              <p className="text-blue-500 text-[10px] font-bold uppercase tracking-widest">{tableData.cycleLabel}</p>
           </div>
           <button onClick={onExit} className="bg-white/10 text-white p-2 rounded-full">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>

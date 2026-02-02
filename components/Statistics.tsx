@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Transaction, AppSettings } from '../types';
 import { 
@@ -13,6 +14,7 @@ import {
     getDaysInMonth,
     getDate
 } from 'date-fns';
+import { getFinancialInterval } from '../constants';
 
 const startOfYearFunc = (date: Date) => {
     const d = new Date(date);
@@ -263,18 +265,26 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
 
   const DailyTableView = () => {
     const viewDate = startOfDay(addDays(new Date(), dateOffset));
+    const billingStartDay = settings.billingCycleStartDay || 1;
+    const { start: monthStart, end: monthEnd } = getFinancialInterval(viewDate, billingStartDay);
+    
     const yearStr = getYear(viewDate).toString();
     const effectiveBudgets = settings.yearlyBudgets?.[yearStr] || settings.baseCategoryBudgets || {};
     const trackedCats = settings.dailyViewCategories || [];
     const freqTargets = settings.dailyTransactionsPerMonth || {};
-    const monthTxs = transactions.filter(tx => isSameMonth(new Date(tx.date), viewDate) && tx.type === 'expense');
+    
+    const monthTxs = transactions.filter(tx => {
+        const tDate = new Date(tx.date);
+        return tDate >= monthStart && tDate <= monthEnd && tx.type === 'expense';
+    });
     const selectedDayTxs = transactions.filter(tx => isSameDay(new Date(tx.date), viewDate) && tx.type === 'expense');
+    
     const totalExpenseBudget = expenseCategories.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
     const trackedBudgetSum = trackedCats.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
     
-    const daysInMonthCount = getDaysInMonth(viewDate);
-    const currentDayOfMonth = getDate(viewDate);
-    const remainingDaysInMonth = Math.max(1, daysInMonthCount - currentDayOfMonth + 1);
+    const daysInMonthCount = Math.round((monthEnd.getTime() - monthStart.getTime()) / (1000 * 3600 * 24)) + 1;
+    const currentDayOfCycle = Math.round((viewDate.getTime() - monthStart.getTime()) / (1000 * 3600 * 24)) + 1;
+    const remainingDaysInMonth = Math.max(1, daysInMonthCount - currentDayOfCycle + 1);
 
     const rows = trackedCats.map(cat => {
         const budget = effectiveBudgets[cat] || 0;
@@ -286,7 +296,6 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         
         const remainingBudget = budget - monthSpent;
         const remainingFreq = freq - monthCount;
-        
         const avgLeft = remainingFreq > 0 ? (remainingBudget / remainingFreq) : remainingBudget;
 
         return { cat, budget, freq, unit, daySpent, avgLeft, totalLeft: remainingBudget, times: monthCount };
@@ -339,7 +348,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     
     const renderBreakdown = (catName: string, items: Transaction[]) => {
         const sorted = [...items].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        if (sorted.length === 0) return <tr key={`${catName}-empty`} className="bg-blue-50/20 italic animate-fade-in text-gray-400 text-[10px]"><td colSpan={8} className="px-8 py-4 text-center">No transactions for this month.</td></tr>;
+        if (sorted.length === 0) return <tr key={`${catName}-empty`} className="bg-blue-50/20 italic animate-fade-in text-gray-400 text-[10px]"><td colSpan={8} className="px-8 py-4 text-center">No transactions for this cycle.</td></tr>;
         
         const total = items.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
 
@@ -359,7 +368,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             ))}
             <tr className="bg-blue-100/40 text-[10px] font-black border-l-4 border-blue-600 border-b border-blue-200/50">
                 <td colSpan={3} className="px-6 py-3 text-blue-800 uppercase tracking-widest text-[8px]">
-                    Monthly {catName === 'GrandTotal' ? 'Grand' : catName} Total
+                    Cycle {catName === 'GrandTotal' ? 'Grand' : catName} Total
                 </td>
                 <td className="px-2 py-3 text-right font-mono text-blue-700 text-xs">
                     {isBalanceVisible ? `$${f0(total)}` : '****'}
@@ -377,15 +386,20 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
 
     return (
       <div className="space-y-4 animate-fade-in">
-        <div className="flex items-center justify-center gap-4 py-2 relative">
-            <button onClick={() => setDateOffset(p => p - 1)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="2" stroke="currentColor"/></svg>
-            </button>
-            <span className="text-sm font-bold text-gray-800">{format(viewDate, 'EEEE, MMM do')}</span>
-            <button onClick={() => setDateOffset(p => p + 1)} disabled={dateOffset >= 0} className="p-2 rounded-full text-gray-500 disabled:opacity-10 transition-colors">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="2" stroke="currentColor"/></svg>
-            </button>
-            <button onClick={() => setDateOffset(0)} disabled={dateOffset === 0} className="absolute right-0 text-[9px] font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full disabled:opacity-0 transition-all">TODAY</button>
+        <div className="flex flex-col items-center justify-center gap-1 py-2 relative">
+            <div className="flex items-center gap-4">
+                <button onClick={() => setDateOffset(p => p - 1)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="2" stroke="currentColor"/></svg>
+                </button>
+                <span className="text-sm font-bold text-gray-800">{format(viewDate, 'EEEE, MMM do')}</span>
+                <button onClick={() => setDateOffset(p => p + 1)} disabled={dateOffset >= 0} className="p-2 rounded-full text-gray-500 disabled:opacity-10 transition-colors">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="2" stroke="currentColor"/></svg>
+                </button>
+            </div>
+            {billingStartDay > 1 && (
+                <span className="text-[10px] text-blue-500 font-bold uppercase tracking-widest">Cycle: {format(monthStart, 'MMM d')} - {format(monthEnd, 'MMM d')}</span>
+            )}
+            <button onClick={() => setDateOffset(0)} disabled={dateOffset === 0} className="absolute right-0 top-1/2 -translate-y-1/2 text-[9px] font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full disabled:opacity-0 transition-all">TODAY</button>
         </div>
         <div className="overflow-x-auto -mx-4 sm:mx-0 rounded-xl border border-gray-100 bg-white shadow-sm">
             <table className="w-full text-[11px] sm:text-xs text-left border-collapse">
