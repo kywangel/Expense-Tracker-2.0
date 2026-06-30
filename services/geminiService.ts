@@ -1,9 +1,4 @@
-
-import { GoogleGenAI, Type } from "@google/genai";
 import { Transaction } from "../types";
-
-// Initializing the GenAI client with API key from environment
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Helper to convert file to base64
 export const fileToGenerativePart = async (file: File): Promise<string> => {
@@ -27,47 +22,18 @@ export const fileToGenerativePart = async (file: File): Promise<string> => {
 
 export const analyzeStatement = async (base64Data: string, mimeType: string = "image/jpeg"): Promise<Partial<Transaction>[]> => {
   try {
-    // Using gemini-3-flash-preview for multi-modal statement analysis
-    const modelId = "gemini-3-flash-preview"; 
-    
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: mimeType, 
-              data: base64Data
-            }
-          },
-          {
-            text: "Analyze this bank statement (image or PDF). Extract all transactions visible. Return a JSON array where each object has: date (YYYY-MM-DD), amount (number, positive for expense), category (guess based on description), note (the description on the statement). Ignore headers or balances."
-          }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              date: { type: Type.STRING },
-              amount: { type: Type.NUMBER },
-              category: { type: Type.STRING },
-              note: { type: Type.STRING }
-            },
-            required: ["date", "amount"]
-          }
-        }
-      }
+    const response = await fetch("/api/gemini/analyze-statement", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base64Data, mimeType }),
     });
 
-    // Directly access text property from response
-    if (response.text) {
-      return JSON.parse(response.text);
+    if (!response.ok) {
+      throw new Error("Server error during statement analysis");
     }
-    return [];
+
+    const data = await response.json();
+    return data.results || [];
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
     throw new Error("Failed to analyze file. It might be too large or unclear.");
@@ -78,14 +44,18 @@ export const generateHabitSummary = async (transactions: Transaction[]): Promise
   if (transactions.length === 0) return "No data available to analyze.";
 
   try {
-    const txSummary = transactions.slice(0, 50).map(t => `${t.date}: ${t.category} $${t.amount}`).join('\n');
-    
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Here are my recent expenses:\n${txSummary}\n\nAnalyze my spending habits. Identify one key trend and suggest one actionable improvement for next month. Keep it short, friendly, and under 50 words.`,
+    const response = await fetch("/api/gemini/habit-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transactions }),
     });
 
-    return response.text || "Could not generate summary.";
+    if (!response.ok) {
+      throw new Error("Server error during habit summary generation");
+    }
+
+    const data = await response.json();
+    return data.summary || "Could not generate summary.";
   } catch (error) {
     console.error("Gemini Text Error:", error);
     return "AI service is currently unavailable.";
@@ -94,14 +64,18 @@ export const generateHabitSummary = async (transactions: Transaction[]): Promise
 
 export const reconcileInvestment = async (netCashFlow: number, actualInvestmentChange: number): Promise<string> => {
    try {
-    const diff = actualInvestmentChange - netCashFlow;
-    
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `My calculated Net Cash Flow (Income - Expenses) is $${netCashFlow}. My Investment Portfolio changed by $${actualInvestmentChange}. The difference is $${diff}. Suggest 3 brief reasons why this discrepancy might exist (e.g., hidden fees, market gains, timing differences). Format as a bulleted list.`,
+    const response = await fetch("/api/gemini/reconcile-investment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ netCashFlow, actualInvestmentChange }),
     });
 
-    return response.text || "Could not reconcile data.";
+    if (!response.ok) {
+      throw new Error("Server error during investment reconciliation");
+    }
+
+    const data = await response.json();
+    return data.reconciliation || "Could not reconcile data.";
   } catch (error) {
     console.error("Gemini Reconciliation Error:", error);
     return "AI service unavailable for reconciliation.";

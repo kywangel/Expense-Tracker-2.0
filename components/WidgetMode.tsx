@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { Transaction, AppSettings } from '../types';
 import { isSameDay, startOfMonth, isSameMonth, startOfDay, getYear, format } from 'date-fns';
-import { getFinancialInterval } from '../constants';
+import { getFinancialInterval, parseLocalDate } from '../constants';
 
 interface WidgetModeProps {
   transactions: Transaction[];
@@ -25,10 +25,10 @@ const WidgetMode: React.FC<WidgetModeProps> = ({ transactions, settings, onExit 
     const freqTargets = settings.dailyTransactionsPerMonth || {};
     
     const monthTxs = transactions.filter(tx => {
-        const tDate = new Date(tx.date);
+        const tDate = parseLocalDate(tx.date);
         return tDate >= monthStart && tDate <= monthEnd && tx.type === 'expense';
     });
-    const todayTxs = transactions.filter(tx => isSameDay(new Date(tx.date), viewDate) && tx.type === 'expense');
+    const todayTxs = transactions.filter(tx => isSameDay(parseLocalDate(tx.date), viewDate) && tx.type === 'expense');
     
     const rows = trackedCats.map(cat => {
         const budget = effectiveBudgets[cat] || 0;

@@ -14,7 +14,7 @@ import {
     getDaysInMonth,
     getDate
 } from 'date-fns';
-import { getFinancialInterval } from '../constants';
+import { getFinancialInterval, parseLocalDate } from '../constants';
 
 const startOfYearFunc = (date: Date) => {
     const d = new Date(date);
@@ -101,7 +101,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
   const [activePopupData, setActivePopupData] = useState<any>(null);
 
   const sortedTransactions = useMemo(() => 
-    [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(a.date).getTime()),
+    [...transactions].sort((a, b) => parseLocalDate(a.date).getTime() - parseLocalDate(b.date).getTime()),
     [transactions]
   );
 
@@ -125,7 +125,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     let runningCumExpense = 0;
 
     sortedTransactions.forEach(tx => {
-        const d = new Date(tx.date);
+        const d = parseLocalDate(tx.date);
         if (d < start) {
             if (tx.type === 'income') { runningWealth += Math.abs(tx.amount); runningCumIncome += Math.abs(tx.amount); }
             if (tx.type === 'expense') { runningWealth -= Math.abs(tx.amount); runningCumExpense += Math.abs(tx.amount); }
@@ -137,7 +137,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         const mStart = startOfMonth(monthDate);
         const mEnd = endOfMonth(monthDate);
         const monthTxs = sortedTransactions.filter(tx => {
-            const d = new Date(tx.date);
+            const d = parseLocalDate(tx.date);
             return d >= mStart && d <= mEnd;
         });
 
@@ -190,7 +190,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     let formatLabel: (date: Date) => string;
     let dataPoints: Date[];
 
-    const firstTxDate = sortedTransactions.length > 0 ? startOfMonth(new Date(sortedTransactions[0].date)) : subMonths(today, 36);
+    const firstTxDate = sortedTransactions.length > 0 ? startOfMonth(parseLocalDate(sortedTransactions[0].date)) : subMonths(today, 36);
 
     switch (period) {
       case 'W':
@@ -210,7 +210,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     }
     
     const relevantTxs = sortedTransactions.filter(tx => {
-        const txDate = new Date(tx.date);
+        const txDate = parseLocalDate(tx.date);
         return !isNaN(txDate.getTime()) && txDate >= interval.start && txDate <= interval.end && tx.type === 'expense';
     });
 
@@ -218,7 +218,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         const key = formatLabel(point);
         const pointData: any = { name: key, rawDate: point };
         relevantTxs.forEach(tx => {
-            const txDate = new Date(tx.date);
+            const txDate = parseLocalDate(tx.date);
             if (isSameDay(txDate, point) || (period === 'Y' && isSameMonth(txDate, point))) {
                 const cat = expenseCategories.includes(tx.category) ? tx.category : "Uncategorized Items";
                 pointData[cat] = (pointData[cat] || 0) + Math.abs(tx.amount);
@@ -274,10 +274,10 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     const freqTargets = settings.dailyTransactionsPerMonth || {};
     
     const monthTxs = transactions.filter(tx => {
-        const tDate = new Date(tx.date);
+        const tDate = parseLocalDate(tx.date);
         return tDate >= monthStart && tDate <= monthEnd && tx.type === 'expense';
     });
-    const selectedDayTxs = transactions.filter(tx => isSameDay(new Date(tx.date), viewDate) && tx.type === 'expense');
+    const selectedDayTxs = transactions.filter(tx => isSameDay(parseLocalDate(tx.date), viewDate) && tx.type === 'expense');
     
     const totalExpenseBudget = expenseCategories.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
     const trackedBudgetSum = trackedCats.reduce((sum, c) => sum + (effectiveBudgets[c] || 0), 0);
@@ -347,7 +347,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     };
     
     const renderBreakdown = (catName: string, items: Transaction[]) => {
-        const sorted = [...items].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const sorted = [...items].sort((a, b) => parseLocalDate(b.date).getTime() - parseLocalDate(a.date).getTime());
         if (sorted.length === 0) return <tr key={`${catName}-empty`} className="bg-blue-50/20 italic animate-fade-in text-gray-400 text-[10px]"><td colSpan={8} className="px-8 py-4 text-center">No transactions for this cycle.</td></tr>;
         
         const total = items.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
@@ -359,7 +359,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                         <div className="flex flex-col">
                             <span className="font-bold text-gray-700">{tx.category}</span>
                             {tx.note && <span className="text-gray-400 italic font-medium">{tx.note}</span>}
-                            <span className="text-[8px] text-gray-300 font-bold uppercase mt-0.5">{format(new Date(tx.date), 'MMM d')}</span>
+                            <span className="text-[8px] text-gray-300 font-bold uppercase mt-0.5">{format(parseLocalDate(tx.date), 'MMM d')}</span>
                         </div>
                     </td>
                     <td className="px-2 py-2.5 text-right font-mono font-bold text-blue-600">{isBalanceVisible ? `$${f0(Math.abs(tx.amount))}` : '****'}</td>
@@ -573,7 +573,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
                             const yearMonths = eachMonthOfInterval({ start: yearStart, end: yearEnd });
                             yearMonths.forEach(m => monthlyDataMap.set(format(m, 'MMM'), { name: format(m, 'MMM'), income: 0, expense: 0, investment: 0 }));
                             sortedTransactions.forEach(curr => {
-                                const txDate = new Date(curr.date);
+                                const txDate = parseLocalDate(curr.date);
                                 if (txDate >= yearStart && txDate <= yearEnd) {
                                     const month = format(txDate, 'MMM');
                                     const monthEntry = monthlyDataMap.get(month);

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, AppSettings } from '../types';
-import { getFinancialInterval } from '../constants';
+import { getFinancialInterval, parseLocalDate } from '../constants';
 import { format } from 'date-fns';
 
 interface DatabaseProps {
@@ -45,9 +45,9 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
         const matchesSearch = !query || 
                              tx.category.toLowerCase().includes(query) || 
                              (tx.note || '').toLowerCase().includes(query);
-        const txDate = new Date(tx.date);
-        const matchesStartDate = !startDate || txDate >= new Date(startDate);
-        const matchesEndDate = !endDate || txDate <= new Date(endDate);
+        const txDate = parseLocalDate(tx.date);
+        const matchesStartDate = !startDate || txDate >= parseLocalDate(startDate);
+        const matchesEndDate = !endDate || txDate <= parseLocalDate(endDate);
         const matchesCategory = selectedCategories.size === 0 || selectedCategories.has(tx.category);
 
         return matchesType && matchesSearch && matchesStartDate && matchesEndDate && matchesCategory;
@@ -57,7 +57,7 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
   const groupedTransactions = useMemo(() => {
     const billingStart = settings.billingCycleStartDay || 1;
     const groups = filteredTransactions.reduce((acc, tx) => {
-        const tDate = new Date(tx.date);
+        const tDate = parseLocalDate(tx.date);
         const { start } = getFinancialInterval(tDate, billingStart);
         // Use the cycle start date as the unique key for grouping
         const monthKey = format(start, 'yyyy-MM-dd');
@@ -67,7 +67,7 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
     }, {} as Record<string, Transaction[]>);
 
     Object.keys(groups).forEach(key => {
-        groups[key].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        groups[key].sort((a, b) => parseLocalDate(b.date).getTime() - parseLocalDate(a.date).getTime());
     });
 
     return groups;
@@ -133,7 +133,7 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
 
   const getMonthLabel = (key: string) => {
       const billingStart = settings.billingCycleStartDay || 1;
-      const date = new Date(key);
+      const date = parseLocalDate(key);
       const { start, end } = getFinancialInterval(date, billingStart);
       if (billingStart === 1) return format(start, 'MMMM yyyy');
       return `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
@@ -196,7 +196,7 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
                                     {groupedTransactions[monthKey].map(tx => (
                                         <tr key={tx.id} className="hover:bg-gray-50/50 transition-colors">
                                             <td className="px-6 py-4 whitespace-nowrap align-top">
-                                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{parseLocalDate(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
                                                 <p className="font-bold text-gray-900 text-sm mt-0.5 tracking-tight">{tx.category}</p>
                                                 <div className="mt-1 flex gap-1">
                                                     <span className={`text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-tighter ${tx.type === 'income' ? 'bg-green-100 text-green-700' : tx.type === 'expense' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{tx.type}</span>

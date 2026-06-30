@@ -15,7 +15,7 @@ import {
   format, 
   isToday 
 } from 'date-fns';
-import { getFinancialInterval } from '../constants';
+import { getFinancialInterval, parseLocalDate } from '../constants';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -88,8 +88,8 @@ const Dashboard: React.FC<DashboardProps> = ({
          return new Date(year, month - 1, 1);
     }
     if (transactions.length === 0) return new Date();
-    const sorted = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    return new Date(sorted[0].date);
+    const sorted = [...transactions].sort((a, b) => parseLocalDate(a.date).getTime() - parseLocalDate(b.date).getTime());
+    return parseLocalDate(sorted[0].date);
   }, [transactions, cumulativeStartMonth]);
 
   const filteredTransactions = useMemo(() => {
@@ -97,7 +97,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       const billingStart = settings.billingCycleStartDay || 1;
       
       return transactions.filter(t => {
-          const tDate = new Date(t.date);
+          const tDate = parseLocalDate(t.date);
           if (viewTimeFrame === 'monthly') {
               const { start, end } = getFinancialInterval(viewDate, billingStart);
               return tDate >= start && tDate <= end;
@@ -231,7 +231,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                   {getDisplayCategoryName(tx.category)}
                               </span>
                               <div className="flex flex-col mt-0.5">
-                                  <span className="text-[9px] text-gray-500 font-semibold">{format(new Date(tx.date), 'MMMM d, yyyy')}</span>
+                                  <span className="text-[9px] text-gray-500 font-semibold">{format(parseLocalDate(tx.date), 'MMMM d, yyyy')}</span>
                                   {tx.note && <span className="text-[9px] text-gray-400 italic font-medium truncate max-w-[200px]">{tx.note}</span>}
                               </div>
                           </div>
@@ -332,7 +332,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         {tx.category || "Others"}
                                     </span>
                                     <div className="flex flex-col mt-0.5">
-                                        <span className="text-[9px] text-gray-500 font-semibold">{format(new Date(tx.date), 'MMMM d, yyyy')}</span>
+                                        <span className="text-[9px] text-gray-500 font-semibold">{format(parseLocalDate(tx.date), 'MMMM d, yyyy')}</span>
                                         {tx.note && <span className="text-[9px] text-gray-400 italic font-medium truncate max-w-[200px]">{tx.note}</span>}
                                     </div>
                                 </div>

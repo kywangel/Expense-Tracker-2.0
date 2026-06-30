@@ -44,6 +44,35 @@ export const toHKDateString = (dateInput?: Date | string | number) => {
 };
 
 /**
+ * Parses a date string safely into a local Date object.
+ * Prevents timezone shifting (e.g. YYYY-MM-DD being parsed as UTC midnight
+ * and ending up in the previous calendar day when accessed in local time).
+ */
+export const parseLocalDate = (dateInput?: string | Date | number): Date => {
+  if (!dateInput) return new Date();
+  if (dateInput instanceof Date) return dateInput;
+  if (typeof dateInput === 'number') return new Date(dateInput);
+
+  const clean = dateInput.split('T')[0].split(' ')[0];
+  const parts = clean.split('-');
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const day = parseInt(parts[2], 10);
+    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+      // Month index is 0-based
+      return new Date(year, month - 1, day);
+    }
+  }
+
+  const d = new Date(dateInput);
+  if (!isNaN(d.getTime())) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  return new Date();
+};
+
+/**
  * Calculates the start and end of a financial month cycle.
  * If startDay is 25, then Feb 24 belongs to Jan (starts Jan 25).
  */

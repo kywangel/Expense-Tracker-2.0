@@ -3,5 +3,8 @@
   "description": "A modern, iOS-style PWA for tracking expenses, analyzing statements with Gemini AI, and reconciling investments.",
   "requestFramePermissions": [
     "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }
