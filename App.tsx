@@ -4,15 +4,16 @@ import Navigation from './components/Navigation';
 import Dashboard from './components/Dashboard';
 import AddTransaction from './components/AddTransaction';
 import Statistics from './components/Statistics';
-import AiTools from './components/AiTools';
+import Recurring from './components/Recurring';
 import Settings from './components/Settings';
 import Budgeting from './components/Budgeting';
 import EditCategories from './components/EditCategories';
 import Database from './components/Database';
 import WidgetMode from './components/WidgetMode';
-import { Transaction, AppView, AppSettings, FoundItem, MatchedItemPair } from './types';
+import { Transaction, AppView, AppSettings, FoundItem, MatchedItemPair, RecurringItem } from './types';
 import { fetchTransactions } from './services/sheetService';
-import { DEFAULT_SHEET_ID, DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INVESTMENT_CATEGORIES, toHKDateString } from './constants';
+import { DEFAULT_SHEET_ID, DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INVESTMENT_CATEGORIES, toHKDateString, getFinancialInterval } from './constants';
+import { subDays } from 'date-fns';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.DASHBOARD);
@@ -117,6 +118,91 @@ const App: React.FC = () => {
   useEffect(() => safeSave('aiFoundItems', aiFoundItems), [aiFoundItems]);
   useEffect(() => safeSave('aiMatchedItems', aiMatchedItems), [aiMatchedItems]);
   useEffect(() => safeSave('appSettings', settings), [settings]);
+
+  const [recurringItems, setRecurringItems] = useState<RecurringItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('recurringItems');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { return []; }
+  });
+
+  useEffect(() => safeSave('recurringItems', recurringItems), [recurringItems]);
+
+  const handleAddRecurring = (item: Omit<RecurringItem, 'id'>) => {
+    const newItem: RecurringItem = {
+      ...item,
+      id: `rec-item-${Date.now()}`
+    };
+    setRecurringItems(prev => [...prev, newItem]);
+    showNotification('Added recurring item');
+  };
+
+  const handleUpdateRecurring = (updated: RecurringItem) => {
+    setRecurringItems(prev => prev.map(item => item.id === updated.id ? updated : item));
+    showNotification('Updated recurring item');
+  };
+
+  const handleDeleteRecurring = (id: string) => {
+    setRecurringItems(prev => prev.filter(item => item.id !== id));
+    showNotification('Deleted recurring item');
+  };
+
+  // Automated posting of recurring items for the current and previous billing cycles
+  useEffect(() => {
+    const billingStart = settings.billingCycleStartDay || 1;
+    const activeItems = recurringItems.filter(item => item.isActive);
+    if (activeItems.length === 0) return;
+
+    const today = new Date();
+    const cyclesToCheck: Date[] = [];
+    
+    // Current cycle start
+    const currentCycle = getFinancialInterval(today, billingStart).start;
+    cyclesToCheck.push(currentCycle);
+
+    // Previous cycle 1 start
+    const prevCycle1 = getFinancialInterval(subDays(currentCycle, 1), billingStart).start;
+    cyclesToCheck.push(prevCycle1);
+
+    // Previous cycle 2 start
+    const prevCycle2 = getFinancialInterval(subDays(prevCycle1, 1), billingStart).start;
+    cyclesToCheck.push(prevCycle2);
+
+    let changed = false;
+    const updatedTxs = [...transactions];
+
+    activeItems.forEach(item => {
+      cyclesToCheck.forEach(cycleDate => {
+        const dateStr = toHKDateString(cycleDate);
+        
+        // Match by source === 'recurring', and either matching recurringId OR same amount + category + date
+        const alreadyExists = updatedTxs.some(tx => 
+          tx.source === 'recurring' && 
+          (tx.recurringId === item.id || (tx.category === item.category && tx.amount === item.amount && tx.date === dateStr))
+        );
+
+        if (!alreadyExists) {
+          const newTx: Transaction = {
+            id: `rec-tx-${item.id}-${dateStr}`,
+            date: dateStr,
+            amount: item.amount,
+            category: item.category,
+            note: item.note ? `${item.note} (Recurring)` : 'Recurring payment',
+            type: item.type,
+            source: 'recurring',
+            recurringId: item.id
+          };
+          updatedTxs.push(newTx);
+          changed = true;
+        }
+      });
+    });
+
+    if (changed) {
+      setTransactions(updatedTxs);
+      showNotification(`Posted automated recurring payments for this cycle!`);
+    }
+  }, [recurringItems, settings.billingCycleStartDay, transactions.length]);
 
   const showNotification = (message: string) => {
     setNotification(message);
@@ -300,7 +386,7 @@ const App: React.FC = () => {
         case AppView.DASHBOARD: return "Dashboard";
         case AppView.STATISTICS: return "Statistics";
         case AppView.DATABASE: return "Database";
-        case AppView.AI_TOOLS: return "AI Tools";
+        case AppView.RECURRING: return "Recurring Items";
         case AppView.SETTINGS: return "Settings";
         case AppView.ADD_TRANSACTION: return "Add Transaction";
         case AppView.BUDGET: return "Manage Budget";
@@ -334,7 +420,7 @@ const App: React.FC = () => {
         {view === AppView.STATISTICS && <Statistics transactions={sortedTransactions} incomeCategories={settings.incomeCategories} investmentCategories={settings.investmentCategories} expenseCategories={settings.expenseCategories} settings={settings} isBalanceVisible={isBalanceVisible} setIsBalanceVisible={setIsBalanceVisible} />}
         {view === AppView.DATABASE && <Database transactions={sortedTransactions} onUpdate={handleUpdateTransaction} onDelete={handleDeleteTransaction} settings={settings} onRefresh={() => handleSyncData(settings.sheetDbUrl, "Form Input")} />}
         {view === AppView.BUDGET && <Budgeting onUpdateBudget={handleUpdateBudget} settings={settings} transactions={sortedTransactions} onBack={() => setView(AppView.SETTINGS)} onShowNotification={showNotification}/>}
-        {view === AppView.AI_TOOLS && <AiTools sheetDbUrl={settings.sheetDbUrl} onAddTransaction={handleAddTransaction} transactions={sortedTransactions} foundTransactions={aiFoundItems} setFoundTransactions={setAiFoundItems} matchedItems={aiMatchedItems} setMatchedItems={setAiMatchedItems} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} onShowNotification={showNotification} isSelectModeActive={isAiSelectModeActive} onToggleSelectMode={setIsAiSelectModeActive} />}
+        {view === AppView.RECURRING && <Recurring recurringItems={recurringItems} onAddRecurring={handleAddRecurring} onUpdateRecurring={handleUpdateRecurring} onDeleteRecurring={handleDeleteRecurring} incomeCategories={settings.incomeCategories} expenseCategories={settings.expenseCategories} investmentCategories={settings.investmentCategories} categoryIcons={settings.categoryIcons} billingCycleStartDay={settings.billingCycleStartDay || 1} transactions={sortedTransactions} />}
         {view === AppView.SETTINGS && <Settings settings={settings} transactions={transactions} aiFoundItems={aiFoundItems} aiMatchedItems={aiMatchedItems} onSave={handleSaveSettings} onImportData={handleImportData} onNavigateToCategories={() => setView(AppView.EDIT_CATEGORIES)} onNavigateToBudget={() => setView(AppView.BUDGET)} />}
         {view === AppView.EDIT_CATEGORIES && <EditCategories settings={settings} onAddCategory={handleAddCategory} onDeleteCategory={handleDeleteCategory} onEditCategory={handleEditCategory} onReorderCategories={handleReorderCategories} transactions={sortedTransactions} onBack={() => setView(AppView.SETTINGS)} />}
         {view === AppView.WIDGET && <WidgetMode transactions={sortedTransactions} settings={settings} onExit={() => setView(AppView.DASHBOARD)} />}

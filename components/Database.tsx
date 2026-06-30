@@ -198,8 +198,11 @@ const Database: React.FC<DatabaseProps> = ({ transactions, onUpdate, onDelete, s
                                             <td className="px-6 py-4 whitespace-nowrap align-top">
                                                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{parseLocalDate(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
                                                 <p className="font-bold text-gray-900 text-sm mt-0.5 tracking-tight">{tx.category}</p>
-                                                <div className="mt-1 flex gap-1">
+                                                <div className="mt-1 flex gap-1 flex-wrap">
                                                     <span className={`text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-tighter ${tx.type === 'income' ? 'bg-green-100 text-green-700' : tx.type === 'expense' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{tx.type}</span>
+                                                    {tx.source === 'recurring' && (
+                                                        <span className="text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-tighter bg-purple-100 text-purple-700">Recurring</span>
+                                                    )}
                                                 </div>
                                                 {tx.note && <p className="text-[10px] text-gray-400 mt-1 italic line-clamp-1 max-w-[180px]">{tx.note}</p>}
                                             </td>

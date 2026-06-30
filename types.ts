@@ -6,7 +6,17 @@ export interface Transaction {
   category: string;
   note?: string;
   type?: 'expense' | 'income' | 'investment';
-  source?: 'IOS shortcut' | 'app input' | 'PDF file';
+  source?: 'IOS shortcut' | 'app input' | 'PDF file' | 'recurring';
+  recurringId?: string;
+}
+
+export interface RecurringItem {
+  id: string;
+  category: string;
+  amount: number;
+  type: 'expense' | 'income' | 'investment';
+  note?: string;
+  isActive: boolean;
 }
 
 // Ensure FoundItem has a guaranteed ID for selection purposes
@@ -60,7 +70,7 @@ export enum AppView {
   DASHBOARD = 'dashboard',
   ADD_TRANSACTION = 'add_transaction',
   STATISTICS = 'statistics',
-  AI_TOOLS = 'ai_tools',
+  RECURRING = 'recurring',
   BUDGET = 'budget', 
   DATABASE = 'database', 
   SETTINGS = 'settings',

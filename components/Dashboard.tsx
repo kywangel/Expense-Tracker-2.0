@@ -231,7 +231,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                                   {getDisplayCategoryName(tx.category)}
                               </span>
                               <div className="flex flex-col mt-0.5">
-                                  <span className="text-[9px] text-gray-500 font-semibold">{format(parseLocalDate(tx.date), 'MMMM d, yyyy')}</span>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-[9px] text-gray-500 font-semibold">{format(parseLocalDate(tx.date), 'MMMM d, yyyy')}</span>
+                                      {tx.source === 'recurring' && (
+                                          <span className="text-[8px] bg-purple-50 text-purple-600 border border-purple-100 font-black px-1 rounded uppercase tracking-tighter">🔄 Recurring</span>
+                                      )}
+                                  </div>
                                   {tx.note && <span className="text-[9px] text-gray-400 italic font-medium truncate max-w-[200px]">{tx.note}</span>}
                               </div>
                           </div>
@@ -332,7 +337,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         {tx.category || "Others"}
                                     </span>
                                     <div className="flex flex-col mt-0.5">
-                                        <span className="text-[9px] text-gray-500 font-semibold">{format(parseLocalDate(tx.date), 'MMMM d, yyyy')}</span>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="text-[9px] text-gray-500 font-semibold">{format(parseLocalDate(tx.date), 'MMMM d, yyyy')}</span>
+                                            {tx.source === 'recurring' && (
+                                                <span className="text-[8px] bg-purple-50 text-purple-600 border border-purple-100 font-black px-1 rounded uppercase tracking-tighter">🔄 Recurring</span>
+                                            )}
+                                        </div>
                                         {tx.note && <span className="text-[9px] text-gray-400 italic font-medium truncate max-w-[200px]">{tx.note}</span>}
                                     </div>
                                 </div>
