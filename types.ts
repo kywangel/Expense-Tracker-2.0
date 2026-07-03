@@ -17,6 +17,7 @@ export interface RecurringItem {
   type: 'expense' | 'income' | 'investment';
   note?: string;
   isActive: boolean;
+  startDate?: string; // YYYY-MM-DD format
 }
 
 // Ensure FoundItem has a guaranteed ID for selection purposes

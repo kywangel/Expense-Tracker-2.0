@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { RecurringItem, Transaction } from '../types';
+import { toHKDateString } from '../constants';
 
 interface RecurringProps {
   recurringItems: RecurringItem[];
@@ -35,6 +36,7 @@ const Recurring: React.FC<RecurringProps> = ({
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [type, setType] = useState<'expense' | 'income' | 'investment'>('expense');
+  const [startDate, setStartDate] = useState('');
 
   // Filtering & Sorting for Cumulative tab
   const [filterType, setFilterType] = useState<'all' | 'expense' | 'income' | 'investment'>('all');
@@ -54,6 +56,7 @@ const Recurring: React.FC<RecurringProps> = ({
     setCategory(availableCats[0] || '');
     setAmount('');
     setNote('');
+    setStartDate(toHKDateString(new Date()));
     setIsAdding(true);
   };
 
@@ -63,6 +66,7 @@ const Recurring: React.FC<RecurringProps> = ({
     setCategory(item.category);
     setAmount(item.amount.toString());
     setNote(item.note || '');
+    setStartDate(item.startDate || toHKDateString(new Date()));
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -76,7 +80,8 @@ const Recurring: React.FC<RecurringProps> = ({
         type,
         category,
         amount: numAmount,
-        note: note.trim()
+        note: note.trim(),
+        startDate: startDate || toHKDateString(new Date())
       });
       setEditingItem(null);
     } else {
@@ -85,7 +90,8 @@ const Recurring: React.FC<RecurringProps> = ({
         category,
         amount: numAmount,
         note: note.trim(),
-        isActive: true
+        isActive: true,
+        startDate: startDate || toHKDateString(new Date())
       });
       setIsAdding(false);
     }
@@ -93,6 +99,7 @@ const Recurring: React.FC<RecurringProps> = ({
     // Reset
     setAmount('');
     setNote('');
+    setStartDate('');
   };
 
   // Get active item lists for non-cumulative tab
@@ -359,16 +366,32 @@ const Recurring: React.FC<RecurringProps> = ({
                         <p className="text-xs font-mono font-bold text-gray-900 mt-0.5">
                           ${item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </p>
-                        {item.note && (
-                          <p className="text-[10px] text-gray-400 italic mt-0.5 max-w-[180px] truncate">{item.note}</p>
-                        )}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                          <span className="text-[10px] text-gray-400 font-bold">Starts: {item.startDate || 'Immediate'}</span>
+                          {item.note && (
+                            <>
+                              <span className="text-[10px] text-gray-300">•</span>
+                              <span className="text-[10px] text-gray-400 italic max-w-[150px] truncate">{item.note}</span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3">
                       {/* Active/Inactive Toggle */}
                       <button
-                        onClick={() => onUpdateRecurring({ ...item, isActive: !item.isActive })}
+                        onClick={() => {
+                          const nextActive = !item.isActive;
+                          const updatedItem = {
+                            ...item,
+                            isActive: nextActive
+                          };
+                          if (nextActive) {
+                            updatedItem.startDate = toHKDateString(new Date());
+                          }
+                          onUpdateRecurring(updatedItem);
+                        }}
                         className={`w-10 h-6 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${
                           item.isActive ? 'bg-green-500' : 'bg-gray-200'
                         }`}
@@ -489,6 +512,21 @@ const Recurring: React.FC<RecurringProps> = ({
               onChange={(e) => setNote(e.target.value)}
               className="w-full bg-gray-50 border-0 rounded-xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 text-gray-800 placeholder-gray-300"
             />
+          </div>
+
+          {/* Start Date Input */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Start Date</label>
+            <input
+              type="date"
+              required
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full bg-gray-50 border-0 rounded-xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 text-gray-800"
+            />
+            <p className="text-[10px] text-gray-400 italic mt-1 leading-normal">
+              Transactions are only posted for cycles starting on or after this date.
+            </p>
           </div>
 
           <button

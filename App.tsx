@@ -181,15 +181,34 @@ const App: React.FC = () => {
     };
 
     activeItems.forEach(item => {
+      const startD = item.startDate ? parseLocalDate(item.startDate) : null;
+
       cyclesToCheck.forEach(cycleDate => {
+        const cycleYear = cycleDate.getFullYear();
+        const cycleMonth = cycleDate.getMonth();
+
+        // Skip cycles starting in a calendar month/year before the item's start month/year
+        if (startD) {
+          const startYear = startD.getFullYear();
+          const startMonth = startD.getMonth();
+          if (cycleYear < startYear || (cycleYear === startYear && cycleMonth < startMonth)) {
+            return;
+          }
+        }
+
         const dateStr = formatDateLocal(cycleDate);
         
-        // Match by source === 'recurring', and either matching (recurringId AND date) OR same amount + category + date
-        const alreadyExists = updatedTxs.some(tx => 
-          tx.source === 'recurring' && 
-          ((tx.recurringId === item.id && tx.date === dateStr) || 
-           (tx.category === item.category && tx.amount === item.amount && tx.date === dateStr))
-        );
+        // Match by source === 'recurring' and check if already logged in the SAME calendar month/year
+        const alreadyExists = updatedTxs.some(tx => {
+          if (tx.source !== 'recurring') return false;
+          
+          const txDateObj = parseLocalDate(tx.date);
+          const isSameCalendarMonth = txDateObj.getFullYear() === cycleYear && txDateObj.getMonth() === cycleMonth;
+          if (!isSameCalendarMonth) return false;
+          
+          return (tx.recurringId === item.id) || 
+                 (tx.category === item.category && tx.amount === item.amount);
+        });
 
         if (!alreadyExists) {
           const newTx: Transaction = {
