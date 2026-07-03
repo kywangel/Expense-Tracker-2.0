@@ -12,7 +12,7 @@ import Database from './components/Database';
 import WidgetMode from './components/WidgetMode';
 import { Transaction, AppView, AppSettings, FoundItem, MatchedItemPair, RecurringItem } from './types';
 import { fetchTransactions } from './services/sheetService';
-import { DEFAULT_SHEET_ID, DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INVESTMENT_CATEGORIES, toHKDateString, getFinancialInterval } from './constants';
+import { DEFAULT_SHEET_ID, DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INVESTMENT_CATEGORIES, toHKDateString, getFinancialInterval, parseLocalDate } from './constants';
 import { subDays } from 'date-fns';
 
 const App: React.FC = () => {
@@ -153,7 +153,9 @@ const App: React.FC = () => {
     const activeItems = recurringItems.filter(item => item.isActive);
     if (activeItems.length === 0) return;
 
-    const today = new Date();
+    // Force date base on HK today to keep it aligned with user input dates
+    const hkTodayStr = toHKDateString(new Date());
+    const today = parseLocalDate(hkTodayStr);
     const cyclesToCheck: Date[] = [];
     
     // Current cycle start
@@ -171,14 +173,22 @@ const App: React.FC = () => {
     let changed = false;
     const updatedTxs = [...transactions];
 
+    const formatDateLocal = (d: Date) => {
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
     activeItems.forEach(item => {
       cyclesToCheck.forEach(cycleDate => {
-        const dateStr = toHKDateString(cycleDate);
+        const dateStr = formatDateLocal(cycleDate);
         
-        // Match by source === 'recurring', and either matching recurringId OR same amount + category + date
+        // Match by source === 'recurring', and either matching (recurringId AND date) OR same amount + category + date
         const alreadyExists = updatedTxs.some(tx => 
           tx.source === 'recurring' && 
-          (tx.recurringId === item.id || (tx.category === item.category && tx.amount === item.amount && tx.date === dateStr))
+          ((tx.recurringId === item.id && tx.date === dateStr) || 
+           (tx.category === item.category && tx.amount === item.amount && tx.date === dateStr))
         );
 
         if (!alreadyExists) {

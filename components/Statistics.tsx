@@ -188,7 +188,7 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
     const today = new Date();
     let interval: { start: Date; end: Date };
     let formatLabel: (date: Date) => string;
-    let dataPoints: Date[];
+    let dataPoints: Date[] = [];
 
     const firstTxDate = sortedTransactions.length > 0 ? startOfMonth(parseLocalDate(sortedTransactions[0].date)) : subMonths(today, 36);
 
@@ -197,14 +197,19 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         const currentWeekEnd = endOfWeek(today);
         const windowStart = subWeeks(dateFnsStartOfWeek(currentWeekEnd), 24); 
         interval = { start: windowStart, end: currentWeekEnd };
-        dataPoints = eachDayOfInterval(interval);
-        formatLabel = (date) => format(date, 'EEE');
+        // Generate weekly data points (week start dates)
+        let currW = dateFnsStartOfWeek(windowStart);
+        while (currW <= currentWeekEnd) {
+            dataPoints.push(currW);
+            currW = addWeeks(currW, 1);
+        }
+        formatLabel = (date) => format(date, 'MMM d');
         break;
       case 'Y':
         const latestMonth = endOfMonth(today);
         interval = { start: firstTxDate, end: latestMonth };
         dataPoints = eachMonthOfInterval(interval);
-        formatLabel = (date) => format(date, 'MMM');
+        formatLabel = (date) => format(date, 'MMM yy');
         break;
       default: return [];
     }
@@ -219,7 +224,13 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
         const pointData: any = { name: key, rawDate: point };
         relevantTxs.forEach(tx => {
             const txDate = parseLocalDate(tx.date);
-            if (isSameDay(txDate, point) || (period === 'Y' && isSameMonth(txDate, point))) {
+            if (period === 'W') {
+                const txWeekStart = dateFnsStartOfWeek(txDate);
+                if (isSameDay(txWeekStart, point)) {
+                    const cat = expenseCategories.includes(tx.category) ? tx.category : "Uncategorized Items";
+                    pointData[cat] = (pointData[cat] || 0) + Math.abs(tx.amount);
+                }
+            } else if (period === 'Y' && isSameMonth(txDate, point)) {
                 const cat = expenseCategories.includes(tx.category) ? tx.category : "Uncategorized Items";
                 pointData[cat] = (pointData[cat] || 0) + Math.abs(tx.amount);
             }
@@ -600,28 +611,52 @@ const Statistics: React.FC<StatisticsProps> = ({ transactions, expenseCategories
             </div>
         </div>
 
-        {activePopupData && (
-          <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-6 pointer-events-auto" onClick={(e) => { e.stopPropagation(); setActivePopupData(null); }}>
-            <div className="rounded-[2.5rem] bg-white border p-8 shadow-2xl min-w-[320px] max-w-[95%] animate-fade-in text-center" onClick={e => e.stopPropagation()}>
-              <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.4em] mb-3">Analysis Result</p>
-              <p className="text-[20px] font-black text-gray-900 mb-6 leading-tight">
-                {activePopupData.payload?.[0]?.payload?.rawDate ? format(activePopupData.payload[0].payload.rawDate, 'MMMM do, yyyy') : activePopupData.payload?.[0]?.payload?.name || 'Summary'}
-              </p>
-              <div className="space-y-4 mb-8">
-                {activePopupData.payload.filter((p: any) => (p.value || 0) > 0).slice(0, 5).map((p: any, i: number) => (
-                    <div key={i} className="flex justify-between items-center text-sm">
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: p.color }}></div>
-                            <span className="font-bold text-gray-700">{p.name}</span>
-                        </div>
-                        <span className="font-mono font-black text-gray-900">{isBalanceVisible ? `$${f1(p.value)}` : '****'}</span>
-                    </div>
-                ))}
+        {activePopupData && (() => {
+          const activeItems = activePopupData.payload
+            .filter((p: any) => (p.value || 0) > 0)
+            .map((p: any) => ({
+              name: p.name,
+              value: Number(p.value),
+              color: p.color || '#cbd5e1'
+            }));
+          
+          const sortedItems = [...activeItems].sort((a, b) => b.value - a.value);
+          const top5 = sortedItems.slice(0, 5);
+          const rest = sortedItems.slice(5);
+          const othersSum = rest.reduce((sum, item) => sum + item.value, 0);
+          
+          const finalDisplayItems = [...top5];
+          if (othersSum > 0) {
+            finalDisplayItems.push({
+              name: 'Others',
+              value: othersSum,
+              color: '#94a3b8'
+            });
+          }
+
+          return (
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-6 pointer-events-auto" onClick={(e) => { e.stopPropagation(); setActivePopupData(null); }}>
+              <div className="rounded-[2.5rem] bg-white border p-8 shadow-2xl min-w-[320px] max-w-[95%] animate-fade-in text-center" onClick={e => e.stopPropagation()}>
+                <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.4em] mb-3">Analysis Result</p>
+                <p className="text-[20px] font-black text-gray-900 mb-6 leading-tight">
+                  {activePopupData.payload?.[0]?.payload?.rawDate ? format(activePopupData.payload[0].payload.rawDate, 'MMMM do, yyyy') : activePopupData.payload?.[0]?.payload?.name || 'Summary'}
+                </p>
+                <div className="space-y-4 mb-8">
+                  {finalDisplayItems.map((p: any, i: number) => (
+                      <div key={i} className="flex justify-between items-center text-sm">
+                          <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: p.color }}></div>
+                              <span className="font-bold text-gray-700">{p.name}</span>
+                          </div>
+                          <span className="font-mono font-black text-gray-900">{isBalanceVisible ? `$${f1(p.value)}` : '****'}</span>
+                      </div>
+                  ))}
+                </div>
+                <button onClick={() => setActivePopupData(null)} className="bg-gray-900 text-white py-4 px-8 rounded-full font-black text-[11px] uppercase tracking-[0.4em] w-full transition-transform active:scale-95">Dismiss</button>
               </div>
-              <button onClick={() => setActivePopupData(null)} className="bg-gray-900 text-white py-4 px-8 rounded-full font-black text-[11px] uppercase tracking-[0.4em] w-full transition-transform active:scale-95">Dismiss</button>
             </div>
-          </div>
-        )}
+          );
+        })()}
     </div>
   );
 };
