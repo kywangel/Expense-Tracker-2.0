@@ -184,27 +184,26 @@ const App: React.FC = () => {
       const startD = item.startDate ? parseLocalDate(item.startDate) : null;
 
       cyclesToCheck.forEach(cycleDate => {
-        const cycleYear = cycleDate.getFullYear();
-        const cycleMonth = cycleDate.getMonth();
+        const { start: cycleStart, end: cycleEnd } = getFinancialInterval(cycleDate, billingStart);
 
-        // Skip cycles starting in a calendar month/year before the item's start month/year
+        // Skip cycles ending before the item's start date
         if (startD) {
-          const startYear = startD.getFullYear();
-          const startMonth = startD.getMonth();
-          if (cycleYear < startYear || (cycleYear === startYear && cycleMonth < startMonth)) {
+          if (startD > cycleEnd) {
             return;
           }
         }
 
         const dateStr = formatDateLocal(cycleDate);
         
-        // Match by source === 'recurring' and check if already logged in the SAME calendar month/year
+        // Match by source === 'recurring' and check if already logged in the SAME custom billing cycle
         const alreadyExists = updatedTxs.some(tx => {
           if (tx.source !== 'recurring') return false;
           
           const txDateObj = parseLocalDate(tx.date);
-          const isSameCalendarMonth = txDateObj.getFullYear() === cycleYear && txDateObj.getMonth() === cycleMonth;
-          if (!isSameCalendarMonth) return false;
+          const txCycleStart = getFinancialInterval(txDateObj, billingStart).start;
+          
+          const isSameBillingCycle = txCycleStart.getTime() === cycleStart.getTime();
+          if (!isSameBillingCycle) return false;
           
           return (tx.recurringId === item.id) || 
                  (tx.category === item.category && tx.amount === item.amount);
